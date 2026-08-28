@@ -211,11 +211,34 @@ the application's user interface.
 
 ## Known audit findings
 
-`npm audit` reports vulnerabilities in `tmp` and `undici`. All of them are
-transitive dependencies of `@nestjs/mau`, which `@nestjs/cli` pulls in for its
-`nest deploy` command. That command is never used in this project — deployment
-is done via Docker Compose. The affected code paths are not reachable at
-runtime; `npm audit --omit=dev` reports no findings.
+`npm audit` reports a stack exhaustion issue in `deepmerge-ts`. It reaches the
+tree through exactly one path:
+
+```
+api -> prisma (devDependency) -> @prisma/config -> deepmerge-ts
+```
+
+`prisma` is the CLI, not the runtime library — `@prisma/client` does not depend
+on it. The package therefore never ships with the application. `@prisma/config`
+merges this project's own Prisma configuration, so the input is not attacker
+controlled. The finding is accepted until Prisma raises the dependency.
+
+Do **not** run `npm audit fix --force` here: it "resolves" the report by
+downgrading `prisma` to 6.12.0, which would break the version parity between
+`prisma` and `@prisma/client` that Prisma requires.
+
+### Reading audit output in this repo
+
+`npm audit --omit=dev` is not reliable in a workspaces monorepo — it has been
+observed listing devDependencies of `apps/api` anyway. To find out whether a
+finding actually affects the shipped application, inspect the path instead:
+
+```bash
+npm ls <package-name>
+```
+
+If every path runs through a devDependency such as `prisma`, `@nestjs/cli` or
+`jest`, the code is build tooling and never reaches production.
 
 Do not run `npm audit fix --force`: it resolves the report by downgrading
 `@nestjs/mau` to 0.0.6, which is not a fix.
