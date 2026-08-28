@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+.angular/
+.env
+.env.*
+!.env.example
+coverage/
+*.tsbuildinfo
+*.log
+npm-debug.log*
+.DS_Store
+.idea/
+.claude/
+CLAUDE.md
