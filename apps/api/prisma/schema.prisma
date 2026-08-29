@@ -11,3 +11,39 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+// ENUMS
+
+enum Unit {
+  GRAM
+  KILOGRAM
+  MILLILITER
+  LITER
+  PIECE
+  CUP
+  TABLESPOON
+  TEASPOON
+  PINCH
+  BUNCH
+  CLOVE
+  SLICE
+  PACK
+  CAN
+}
+
+model Recipe {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  title        String   @db.VarChar(50)
+  description  String?
+  instructions String
+  servings     Int      @default(2)
+  prepMinutes  Int?     @map("prep_minutes")
+  sourceUrl    String?  @map("source_url")
+  sourceName   String?  @map("source_name") @db.VarChar(150)
+  externalId   String?  @map("external_id") @db.VarChar(100)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@unique([sourceName, externalId])
+  @@map("recipe")
+}
