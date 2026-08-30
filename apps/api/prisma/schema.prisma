@@ -47,3 +47,22 @@ model Recipe {
   @@unique([sourceName, externalId])
   @@map("recipe")
 }
+
+model Ingredient {
+  id              String            @id @default(uuid(7)) @db.Uuid
+  name            String            @db.VarChar(120)
+  nameNormalized  String            @unique @map("name_normalized") @db.VarChar(120)
+  defaultUnit     Unit?             @map("default_unit")
+  ingredientAlias IngredientAlias[]
+
+  @@map("ingredient")
+}
+
+model IngredientAlias {
+  id           String     @id @default(uuid(7)) @db.Uuid
+  alias        String     @unique @db.VarChar(120)
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  ingredientId String     @map("ingredient_id") @db.Uuid
+
+  @@map("ingredient_alias")
+}
