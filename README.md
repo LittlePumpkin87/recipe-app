@@ -49,11 +49,19 @@ docker compose up -d db
 # 4. Install dependencies
 npm install
 
-# 5. Start the API in watch mode
+# 5. Create the database tables
+cd apps/api && npx prisma migrate dev && cd ../..
+
+# 6. Start the API in watch mode
 npm run start:dev -w api
 ```
 
 The API listens on http://localhost:3000.
+
+Step 5 is the one that is easy to miss: steps 1 to 4 leave you with a running
+but completely empty database. See [Prisma and migrations](#prisma-and-migrations)
+for what that command does and why it is the only one run from inside
+`apps/api`.
 
 Verify that the database is up:
 
@@ -92,8 +100,13 @@ root using the `-w` flag:
 
 ```bash
 npm run start:dev -w api    # watch mode
+npm run start:prod -w api   # run the compiled build from dist/
 npm run build -w api        # production build
 npm run test -w api         # unit tests
+npm run test:e2e -w api     # end-to-end tests
+npm run test:cov -w api     # unit tests with coverage report
+npm run lint -w api         # oxlint over src/ and test/
+npm run format -w api       # prettier over src/ and test/
 npm install <pkg> -w api    # add a dependency to the API, not to the root
 ```
 
@@ -110,6 +123,171 @@ The API is compiled to CommonJS. `apps/api/tsconfig.json` sets
 `"module": "nodenext"`, which defers to the `type` field of the nearest
 `package.json`; since none is set, the emitted output is CommonJS and relative
 imports are written without a file extension.
+
+## Data model
+
+Four models and one enum. The join table carries the amount in addition to the
+relation, which is why it is written out explicitly rather than left to Prisma's
+implicit many-to-many.
+
+```mermaid
+erDiagram
+    Recipe ||--o{ RecipeIngredient : "has"
+    Ingredient ||--o{ RecipeIngredient : "used in"
+    Ingredient ||--o{ IngredientAlias : "known as"
+```
+
+| Model | Purpose |
+|---|---|
+| `Recipe` | Title, description, instructions, servings, optional import provenance. |
+| `Ingredient` | Central ingredient list. One row per ingredient, shared across recipes. |
+| `IngredientAlias` | Alternative spellings pointing at an ingredient ("zwiebeln" → "Zwiebel"). |
+| `RecipeIngredient` | Join table between the two, carrying `amount` and `unit`. |
+
+### Design decisions
+
+**Units are an enum, not free text.** A string column produces "tbsp", "Tbsp"
+and "tablespoon" as three distinct units, which makes the V2 shopping list
+impossible to aggregate. No conversion happens anywhere — not even grams to
+kilograms; amounts are only ever added up when the unit is identical. That is
+also why `CUP` is harmless despite being defined differently around the world.
+
+**Uniqueness sits on `nameNormalized`, not on `name`.** A `@unique` on `name`
+compares byte for byte and would happily store "Zwiebel" next to "zwiebel".
+`name` keeps the display spelling; `nameNormalized` holds the trimmed,
+lowercased form and carries the index. Normalisation happens in the service —
+the database does not do it by itself.
+
+**Plural detection is deliberately not automated.** German has no rule for it
+(Zwiebeln→Zwiebel, but Eier→Ei and Lachs→Lachs). `IngredientAlias` exists so a
+mapping can be recorded once, by hand, and reused. The real protection against
+duplicates is the autocomplete when entering a recipe.
+
+**`onDelete` differs per direction, on purpose.** Deleting a recipe cascades to
+its `RecipeIngredient` rows — "200 g flour" means nothing without its recipe.
+Deleting an *ingredient* that is still used is restricted, which is the default
+and left implicit: cascading there would silently strip an ingredient from every
+recipe that uses it, and nobody would notice until they cooked one.
+
+**`amount` is `Decimal`, and optional.** Binary floating point cannot represent
+0.1 exactly, so adding three of them for a shopping list yields
+`0.30000000000000004`. `Decimal(8, 2)` is exact. It is nullable because "salt to
+taste" has neither an amount nor a unit — `unit` is nullable for the same
+reason, so the V2 shopping list has to handle NULL either way: list the
+ingredient, but do not add it up.
+
+**Primary keys are UUID v7** (`@default(uuid(7)) @db.Uuid`). The first 48 bits
+are a timestamp, so keys sort chronologically and new rows append to the end of
+the index instead of landing in random places, the way v4 does.
+
+**Scaling servings is calculated, never written back.** Amounts always refer to
+`recipe.servings`. Writing a scaled amount back would overwrite the base value
+every time somebody cooks for a different number of people.
+
+### Naming convention
+
+Models are PascalCase and singular in the schema (`Recipe`), fields are
+camelCase. In Postgres everything is snake_case, produced by `@@map` on models
+and enums and `@map` on multi-word columns. The enum is easy to forget: without
+`@@map("unit")` the type is created as `"Unit"` and needs quoting everywhere,
+even though every table around it does not.
+
+The reason is ergonomic: Prisma quotes identifiers when creating them, so an
+unmapped model would become a table named `"IngredientAlias"` that needs double
+quotes in every hand-written `psql` query. Enum values are English like the rest
+of the repository; the display form is the frontend's job.
+
+Note that PascalCase applies to model *names* only, not to their fields.
+
+## Prisma and migrations
+
+The schema lives in `apps/api/prisma/schema.prisma`, migrations in
+`apps/api/prisma/migrations/`.
+
+```bash
+cd apps/api
+
+npx prisma migrate dev --name <name>   # create and apply a migration
+npx prisma migrate deploy              # apply existing migrations (production)
+npx prisma studio                      # browse and edit data in the browser
+npx prisma validate                    # check the schema
+npx prisma format                      # format and complete relations
+```
+
+**These are the only commands run from inside `apps/api`.** Everything else uses
+`-w api` from the root. Prisma resolves `schema.prisma` relative to the working
+directory, and `apps/api/prisma7.config.ts` loads the repository-root `.env`
+explicitly, two levels up, before handing `DATABASE_URL` to the datasource. That
+config file exists precisely because the `.env` does not sit next to the schema.
+
+**Migration files are committed.** Prisma writes plain SQL into
+`prisma/migrations/<timestamp>_<name>/migration.sql`, and the applied history is
+tracked in a `_prisma_migrations` table inside the database. That is what lets a
+fresh clone reach the identical schema, and what makes a schema change
+reviewable in a pull request.
+
+**The generated client is not committed.** The generator writes to
+`apps/api/src/generated/prisma`, which is listed in `apps/api/.gitignore`. It is
+build output derived from the schema and would otherwise produce enormous, noisy
+diffs. `prisma migrate dev` regenerates it; `npx prisma generate` does so on its
+own if you only pulled someone else's migration.
+
+**`prisma format` completes as well as formats.** Given half a relation it will
+add the missing opposite field, move `@relation` to the side holding the foreign
+key, and turn a singular relation field into a list. It makes a schema *valid*,
+not *correct* — it never decides `onDelete` for you, because that is a
+behavioural choice. Run it once you are happy with what you wrote, otherwise you
+lose track of which lines are yours.
+
+### Prisma Studio
+
+```bash
+cd apps/api && npx prisma studio
+```
+
+Opens a browser UI on http://localhost:51212. This is the tool to reach for when
+working with *data*; use `psql` or a SQL client for questions about *structure*.
+
+Two things it does that a generic SQL client cannot:
+
+**It knows the schema.** Relations are links rather than raw UUIDs, so a recipe
+lists its ingredients and each one navigates through to the ingredient itself.
+`unit` is a dropdown of the `Unit` enum, not a free-text field that lets you
+type a value the column will reject.
+
+**It writes through the Prisma client, so defaults are applied.** `id` and
+`updated_at` are filled in automatically. That matters here because
+`@default(uuid(7))` and `@updatedAt` are not part of the migration — Postgres
+knows nothing about them, the client generates both before sending the INSERT.
+A hand-written `INSERT` in psql that omits either column fails; the same row
+created in Studio does not.
+
+It is worth having open while building `POST /recipes`: seeding an ingredient by
+hand and watching the join rows appear is faster feedback than a test run.
+
+## API endpoints
+
+V1 only. There is no login, and no endpoint is authenticated.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/recipes` | List, with optional `?search=` on the title |
+| GET | `/recipes/:id` | Single recipe including its ingredients |
+| POST | `/recipes` | Create, including the ingredient list |
+| PATCH | `/recipes/:id` | Update |
+| DELETE | `/recipes/:id` | Delete |
+| GET | `/ingredients` | Autocomplete, `?search=`, capped at 20 results |
+| POST | `/ingredients` | Create an ingredient |
+
+`POST /recipes` receives the recipe and its ingredient list in a single request.
+For each ingredient the service has to decide whether it already exists (link
+it) or is new (create it, then link it), looking first at
+`ingredient.nameNormalized` and then at `ingredientAlias.alias`. All of it runs
+in **one transaction**: a failure halfway through must leave nothing behind.
+
+There is deliberately no endpoint for managing aliases in V1. The table is read
+by the lookup but filled by hand through `prisma studio` — aliases are rare
+exceptions until the V3 importer starts producing them.
 
 ## Working with the database
 
@@ -199,6 +377,71 @@ title, mobile friendly, WCAG AA.
 **V2** — random weekly suggestions, meal plan, shopping list.
 
 **V3** — recipe import from URLs via schema.org metadata.
+
+**V4** — multi-user operation. Designed, deliberately not built. See below.
+
+### Multi-user (V4)
+
+V1 to V3 are built for a single household: no accounts, no tenancy, one shared
+set of data. Opening the application to strangers is a different project, and
+this section records the design decisions so the earlier versions do not paint
+themselves into a corner. None of it is built ahead of time — a `visibility`
+column that only ever holds one value is in the way of every query and buys
+nothing.
+
+The guiding idea: **a recipe belongs to someone, an ingredient belongs to
+nobody.**
+
+| Table | Visibility | Why |
+|---|---|---|
+| `Ingredient` | global | Master data. An onion is the same vegetable for everyone; nothing about it is private. |
+| `IngredientAlias` | per user | A personal turn of phrase. Global aliases are an open door: one wrong mapping silently affects everybody else's imports. |
+| `Recipe` | owner plus visibility | The user's own content. |
+
+Schema changes, all of them plain migrations:
+
+- new `User` model
+- `Recipe` gains `ownerId` (FK) and `visibility` (enum `PRIVATE` / `PUBLIC`,
+  defaulting to `PRIVATE`)
+- `IngredientAlias` gains `userId`, and its unique index moves from `alias` to
+  `@@unique([userId, alias])`
+- `Recipe`: `@@unique([sourceName, externalId])` becomes
+  `@@unique([ownerId, sourceName, externalId])`, otherwise one user's import
+  blocks everyone else's
+- new `SavedRecipe` model, many-to-many between `User` and `Recipe`, composite
+  primary key `[userId, recipeId]` plus `savedAt`
+
+The shared starter library is not a special case: those are recipes with
+`visibility: PUBLIC` owned by a system user.
+
+**Adding someone else's recipe comes in two flavours.** *Copying* inserts a new
+row owned by the copying user, with an optional `copiedFromId` recording where
+it came from, and is therefore editable. *Saving* only inserts a `SavedRecipe`
+row and stays a pointer at content owned by somebody else.
+
+Neither needs a rule of its own. A single check — only the owner may edit —
+produces both behaviours, because the saving user is not the owner. That check
+belongs in the service layer, not in the database: Postgres has no notion of a
+logged-in user. It can enforce foreign keys, not permissions.
+
+`SavedRecipe` uses `onDelete: Cascade`, so a saved recipe can disappear when its
+owner deletes it, and can change underneath the reader when its owner edits it.
+Call it *saved* or *bookmarked* in the interface, never something that promises
+permanence; anyone who needs to rely on a recipe should copy it. For the same
+reason the V2 meal plan holds a copy rather than a pointer — otherwise Thursday's
+shopping list turns up empty because a stranger deleted their recipe.
+
+**Imported recipes must never become public.** A set of cooking instructions is
+a protected literary work (a bare list of ingredients is not). Copying one into
+a private cookbook is fine; republishing it is not. The switch to `PUBLIC` has
+to be blocked in code for any recipe with a `sourceUrl`, not merely left out of
+the interface — the operator of a public instance is liable for what its users
+publish.
+
+Finally, the part that is not code: real accounts mean personal data, so an
+imprint, a privacy policy and a deletion process are required, on top of
+operating the service, taking backups and applying security updates
+indefinitely for other people. The 2 GB Synology is not the machine for that.
 
 ## License
 

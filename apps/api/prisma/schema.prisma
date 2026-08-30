@@ -29,31 +29,35 @@ enum Unit {
   SLICE
   PACK
   CAN
+
+  @@map("unit")
 }
 
 model Recipe {
-  id           String   @id @default(uuid(7)) @db.Uuid
-  title        String   @db.VarChar(50)
-  description  String?
-  instructions String
-  servings     Int      @default(2)
-  prepMinutes  Int?     @map("prep_minutes")
-  sourceUrl    String?  @map("source_url")
-  sourceName   String?  @map("source_name") @db.VarChar(150)
-  externalId   String?  @map("external_id") @db.VarChar(100)
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id                String             @id @default(uuid(7)) @db.Uuid
+  title             String             @db.VarChar(50)
+  description       String?
+  instructions      String
+  servings          Int                @default(2)
+  prepMinutes       Int?               @map("prep_minutes")
+  sourceUrl         String?            @map("source_url")
+  sourceName        String?            @map("source_name") @db.VarChar(150)
+  externalId        String?            @map("external_id") @db.VarChar(100)
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+  recipeIngredients RecipeIngredient[]
 
   @@unique([sourceName, externalId])
   @@map("recipe")
 }
 
 model Ingredient {
-  id              String            @id @default(uuid(7)) @db.Uuid
-  name            String            @db.VarChar(120)
-  nameNormalized  String            @unique @map("name_normalized") @db.VarChar(120)
-  defaultUnit     Unit?             @map("default_unit")
-  ingredientAlias IngredientAlias[]
+  id                String             @id @default(uuid(7)) @db.Uuid
+  name              String             @db.VarChar(120)
+  nameNormalized    String             @unique @map("name_normalized") @db.VarChar(120)
+  defaultUnit       Unit?              @map("default_unit")
+  ingredientAlias   IngredientAlias[]
+  recipeIngredients RecipeIngredient[]
 
   @@map("ingredient")
 }
@@ -65,4 +69,16 @@ model IngredientAlias {
   ingredientId String     @map("ingredient_id") @db.Uuid
 
   @@map("ingredient_alias")
+}
+
+model RecipeIngredient {
+  amount       Decimal?   @db.Decimal(8, 2)
+  ingredientId String     @map("ingredient_id") @db.Uuid
+  recipeId     String     @map("recipe_id") @db.Uuid
+  unit         Unit?
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id])
+  recipe       Recipe     @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@id([recipeId, ingredientId])
+  @@map("recipe_ingredient")
 }
