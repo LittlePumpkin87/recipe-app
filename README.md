@@ -3,7 +3,8 @@
 Self-hosted, ad-free web application for managing recipes, generating weekly
 suggestions and deriving a shopping list from them.
 
-Private project for a single household. No multi-tenancy, no public sign-up. (YET)
+Private project for a single household. No multi-tenancy, no public sign-up —
+see [Multi-user (V4)](#multi-user-v4) for what opening it up would take.
 
 ## Status
 
@@ -449,8 +450,9 @@ Copyright (C) 2026 Little Pumpkin Design (Jennifer Roob)
 
 Licensed under the GNU Affero General Public License v3.0 — see [LICENSE](LICENSE).
 
-As required by section 13 of the AGPL, a link to this repository is shown in
-the application's user interface.
+Section 13 of the AGPL requires that anyone interacting with the software over a
+network be offered a link to its source. There is no user interface yet; the
+link will be part of the frontend from the moment one exists.
 
 ## Known audit findings
 
