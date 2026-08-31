@@ -3,8 +3,24 @@
 Self-hosted, ad-free web application for managing recipes, generating weekly
 suggestions and deriving a shopping list from them.
 
-Private project for a single household. No multi-tenancy, no public sign-up —
-see [Multi-user (V4)](#multi-user-v4) for what opening it up would take.
+A private project for a single household to begin with: no multi-tenancy, no
+public sign-up. Opening it up as a multi-user application is the long-term plan
+and is already designed — see [Multi-user (V4)](#multi-user-v4).
+
+## Why this exists
+
+Three apps' worth of features, without the three apps:
+
+- a recipe book and a weekly meal plan, like Chefkoch
+- a shopping list built from that plan, like Bring!
+- random suggestions for when nothing comes to mind, like HelloFresh — minus
+  the subscription box
+
+None of the three is new on its own. The point is that they stop being separate:
+the plan is built from your own recipes, and the shopping list is built from the
+plan.
+
+Free, ad-free, no account required, running on hardware you own.
 
 ## Status
 
@@ -88,10 +104,17 @@ This is an npm workspaces monorepo. Application packages live under `apps/`.
 ```
 .
 ├── apps/
-│   └── api/            # NestJS backend (workspace name: "api")
-├── docker-compose.yml  # local infrastructure
-├── .env                # local secrets — never committed
-└── .env.example        # template for .env
+│   └── api/                # NestJS backend (workspace name: "api")
+│       ├── prisma/         # schema and migrations
+│       ├── requests.http   # example requests for the VS Code REST Client
+│       └── src/
+│           ├── generated/prisma/   # Prisma client — generated, never edited
+│           ├── prisma/             # PrismaService, global
+│           ├── recipes/            # feature module
+│           └── ingredients/        # feature module
+├── docker-compose.yml      # local infrastructure
+├── .env                    # local secrets — never committed
+└── .env.example            # template for .env
 ```
 
 ## Backend
@@ -121,6 +144,18 @@ Environment variables are read from the `.env` file in the repository root.
 repository root, so both places that load the file resolve it two levels up:
 `ConfigModule` in `src/app.module.ts` for the running application, and
 `prisma7.config.ts` for the Prisma CLI.
+
+Inside `src/`, each area of the domain gets one folder holding three files: a
+module, a controller and a service. The controller receives HTTP requests and
+knows about paths, status codes and query parameters. The service holds the
+logic and is the only place a database query may live. The module wires the two
+together — it binds the controller to routes at startup and makes the service
+injectable, but takes no part in handling a request.
+
+The split pays off when the data source changes: turning a service method into
+a Prisma query leaves its controller untouched. New folders are created with
+`npx nest g module <name>` from inside `apps/api`, which also registers the
+module in `src/app.module.ts`.
 
 The API is compiled to CommonJS. `apps/api/tsconfig.json` sets
 `"module": "nodenext"`, which defers to the `type` field of the nearest

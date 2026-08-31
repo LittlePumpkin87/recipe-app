@@ -1,0 +1,10 @@
+@host = http://localhost:3000
+
+### Standard-Endpunkt
+GET {{host}}/
+
+### Rezepte
+GET {{host}}/recipes
+
+### Zutaten
+GET {{host}}/ingredients
