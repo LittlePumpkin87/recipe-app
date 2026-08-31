@@ -117,13 +117,21 @@ the dependency is not declared in `apps/api/package.json` — which only breaks
 once the API is deployed on its own.
 
 Environment variables are read from the `.env` file in the repository root.
-The path is resolved relative to the working directory, so API scripts must be
-started from the root via `-w api`, not from inside `apps/api`.
+`npm run <script> -w api` sets the working directory to `apps/api`, not to the
+repository root, so both places that load the file resolve it two levels up:
+`ConfigModule` in `src/app.module.ts` for the running application, and
+`prisma7.config.ts` for the Prisma CLI.
 
 The API is compiled to CommonJS. `apps/api/tsconfig.json` sets
 `"module": "nodenext"`, which defers to the `type` field of the nearest
 `package.json`; since none is set, the emitted output is CommonJS and relative
 imports are written without a file extension.
+
+Every file opens with a JSDoc block placed directly above the declaration it
+describes — above the class, not above the imports — and it says *why* the file
+exists rather than what the code does. The position is what makes it useful:
+TypeScript attaches the text to the symbol, so hovering `PrismaService`
+anywhere in the editor shows it without opening the file or this README.
 
 ## Data model
 
@@ -232,6 +240,31 @@ reviewable in a pull request.
 build output derived from the schema and would otherwise produce enormous, noisy
 diffs. `prisma migrate dev` regenerates it; `npx prisma generate` does so on its
 own if you only pulled someone else's migration.
+
+**Prisma 7 requires a driver adapter.** The Rust query engine is gone, so the
+client cannot open a connection by itself — which is why the `datasource` block
+in `schema.prisma` carries no `url`. `@prisma/adapter-pg` wraps the `pg` driver
+and is handed to the client when it is constructed, in
+`apps/api/src/prisma/prisma.service.ts`:
+
+```ts
+const adapter = new PrismaPg({
+  connectionString: config.getOrThrow<string>('DATABASE_URL'),
+});
+super({ adapter });
+```
+
+Three consequences. The connection string reaches the *adapter*, never the
+client, so guides written for Prisma 5 or 6 that pass a URL to
+`new PrismaClient()` no longer apply. `@prisma/adapter-pg` and `@prisma/client`
+must be kept on the same version, because they speak an internal protocol that
+may change between releases — upgrade them together. And `pg` is deliberately
+not a direct dependency; the adapter brings it, so only one place pins its
+version.
+
+`DATABASE_URL` reaches the service through `ConfigService`, not through
+`process.env` directly. `getOrThrow` aborts the start with the name of the
+missing variable instead of failing later, on the first request.
 
 **`prisma format` completes as well as formats.** Given half a relation it will
 add the missing opposite field, move `@relation` to the side holding the foreign
