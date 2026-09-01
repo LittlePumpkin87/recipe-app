@@ -39,12 +39,16 @@ CREATE TABLE "ingredient_alias" (
 
 -- CreateTable
 CREATE TABLE "recipe_ingredient" (
+    "id" UUID NOT NULL,
     "amount" DECIMAL(8,2),
     "ingredient_id" UUID NOT NULL,
     "recipe_id" UUID NOT NULL,
     "unit" "unit",
+    "note" VARCHAR(80),
+    "group_label" VARCHAR(100),
+    "position" INTEGER NOT NULL,
 
-    CONSTRAINT "recipe_ingredient_pkey" PRIMARY KEY ("recipe_id","ingredient_id")
+    CONSTRAINT "recipe_ingredient_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateIndex
@@ -55,6 +59,12 @@ CREATE UNIQUE INDEX "ingredient_name_normalized_key" ON "ingredient"("name_norma
 
 -- CreateIndex
 CREATE UNIQUE INDEX "ingredient_alias_alias_key" ON "ingredient_alias"("alias");
+
+-- CreateIndex
+CREATE INDEX "recipe_ingredient_ingredient_id_idx" ON "recipe_ingredient"("ingredient_id");
+
+-- CreateIndex
+CREATE INDEX "recipe_ingredient_recipe_id_idx" ON "recipe_ingredient"("recipe_id");
 
 -- AddForeignKey
 ALTER TABLE "ingredient_alias" ADD CONSTRAINT "ingredient_alias_ingredient_id_fkey" FOREIGN KEY ("ingredient_id") REFERENCES "ingredient"("id") ON DELETE CASCADE ON UPDATE CASCADE;

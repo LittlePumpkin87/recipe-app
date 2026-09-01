@@ -69,7 +69,10 @@ npm install
 # 5. Create the database tables
 cd apps/api && npx prisma migrate dev && cd ../..
 
-# 6. Start the API in watch mode
+# 6. Optional: fill the database with development data
+cd apps/api && npx prisma db seed && cd ../..
+
+# 7. Start the API in watch mode
 npm run start:dev -w api
 ```
 
@@ -105,9 +108,10 @@ This is an npm workspaces monorepo. Application packages live under `apps/`.
 .
 ├── apps/
 │   └── api/                # NestJS backend (workspace name: "api")
-│       ├── prisma/         # schema and migrations
+│       ├── prisma/         # schema, migrations and seed.ts
 │       ├── requests.http   # example requests for the VS Code REST Client
 │       └── src/
+│           ├── common/             # helpers shared by seed and services
 │           ├── generated/prisma/   # Prisma client — generated, never edited
 │           ├── prisma/             # PrismaService, global
 │           ├── recipes/            # feature module
@@ -170,9 +174,9 @@ anywhere in the editor shows it without opening the file or this README.
 
 ## Data model
 
-Four models and one enum. The join table carries the amount in addition to the
-relation, which is why it is written out explicitly rather than left to Prisma's
-implicit many-to-many.
+Four models and one enum. The join table carries the amount, the unit and three
+presentation fields in addition to the relation, which is why it is written out
+explicitly rather than left to Prisma's implicit many-to-many.
 
 ```mermaid
 erDiagram
@@ -183,10 +187,10 @@ erDiagram
 
 | Model | Purpose |
 |---|---|
-| `Recipe` | Title, description, instructions, servings, optional import provenance. |
+| `Recipe` | Title, description, instructions, servings, `prepMinutes` and `totalMinutes`, optional import provenance. |
 | `Ingredient` | Central ingredient list. One row per ingredient, shared across recipes. |
 | `IngredientAlias` | Alternative spellings pointing at an ingredient ("zwiebeln" → "Zwiebel"). |
-| `RecipeIngredient` | Join table between the two, carrying `amount` and `unit`. |
+| `RecipeIngredient` | Join table between the two, carrying `amount`, `unit`, a per-line `note`, a `groupLabel` and the `position` within the recipe. |
 
 ### Design decisions
 
@@ -198,9 +202,16 @@ also why `CUP` is harmless despite being defined differently around the world.
 
 **Uniqueness sits on `nameNormalized`, not on `name`.** A `@unique` on `name`
 compares byte for byte and would happily store "Zwiebel" next to "zwiebel".
-`name` keeps the display spelling; `nameNormalized` holds the trimmed,
-lowercased form and carries the index. Normalisation happens in the service —
-the database does not do it by itself.
+`name` keeps the display spelling; `nameNormalized` holds the folded form and
+carries the index. The database does not normalise on its own — it only compares
+what it is handed.
+
+The folding therefore lives in exactly one place, `src/common/normalize-name.ts`,
+and both the seed and the service call it. Two definitions would drift apart and
+the unique index would stop catching anything. It applies NFC normalisation,
+collapses whitespace runs to a single space, trims, and lowercases. NFC is the
+one that is invisible: `ö` exists both as a single code point and as `o` plus a
+combining diaeresis, identical on screen and two different strings to Postgres.
 
 **Plural detection is deliberately not automated.** German has no rule for it
 (Zwiebeln→Zwiebel, but Eier→Ei and Lachs→Lachs). `IngredientAlias` exists so a
@@ -220,9 +231,39 @@ taste" has neither an amount nor a unit — `unit` is nullable for the same
 reason, so the V2 shopping list has to handle NULL either way: list the
 ingredient, but do not add it up.
 
-**Primary keys are UUID v7** (`@default(uuid(7)) @db.Uuid`). The first 48 bits
-are a timestamp, so keys sort chronologically and new rows append to the end of
-the index instead of landing in random places, the way v4 does.
+**Two time fields, not one.** `prepMinutes` is hands-on work, `totalMinutes` is
+wall clock including resting and baking. A bread with 15 minutes of work and two
+hours of proving makes the case: one column would answer two different questions
+and get one of them wrong. The V2 meal plan cares about `prepMinutes` ("can I do
+this on a Tuesday?"), planning the day itself about `totalMinutes` ("when do I
+have to start?"). Both are optional. Finer breakdowns — resting and baking as
+separate figures — stay in `description` rather than becoming columns.
+
+**`note`, `groupLabel` and `position` belong to the line, not to the
+ingredient.** `note` holds the qualifier for this one occurrence — "fresh",
+"finely diced", "level", "for frying". `groupLabel` is the sub-heading a recipe
+prints above a run of ingredients ("Für den Teig"); it is presentation only and
+plays no part in any lookup. `position` is `NOT NULL` with no default on
+purpose: the order of an ingredient list is part of the recipe, and there is no
+sensible fallback. It is assigned from the index of the incoming list, never
+maintained by hand.
+
+**Primary keys are UUID v7** (`@default(dbgenerated("uuidv7()")) @db.Uuid`). The
+first 48 bits are a timestamp, so keys sort chronologically and new rows append
+to the end of the index instead of landing in random places, the way v4 does.
+
+The value is generated by **PostgreSQL 18**, which ships `uuidv7()` as a
+built-in function, not by the Prisma client. `dbgenerated` tells Prisma that the
+column has a default it does not control, and the migration writes it into the
+table. The practical difference from `@default(uuid(7))`, which generates in the
+client: a hand-written `INSERT` in psql that omits `id` works.
+
+**The join table allows the same ingredient twice.** `RecipeIngredient` has its
+own `id` primary key rather than a composite one over `(recipeId,
+ingredientId)`. Real recipes need it: a Langos lists `Öl` twice, 30 ml in the
+dough and an unmeasured amount for frying. `note` and `amount` are what tell the
+two rows apart. The cost is that nothing stops a duplicate entered by mistake —
+that check belongs in the service, where it can distinguish the two cases.
 
 **Scaling servings is calculated, never written back.** Amounts always refer to
 `recipe.servings`. Writing a scaled amount back would overwrite the base value
@@ -253,6 +294,7 @@ cd apps/api
 
 npx prisma migrate dev --name <name>   # create and apply a migration
 npx prisma migrate deploy              # apply existing migrations (production)
+npx prisma db seed                     # wipe and rewrite the development data
 npx prisma studio                      # browse and edit data in the browser
 npx prisma validate                    # check the schema
 npx prisma format                      # format and complete relations
@@ -301,6 +343,33 @@ version.
 `process.env` directly. `getOrThrow` aborts the start with the name of the
 missing variable instead of failing later, on the first request.
 
+### Seeding
+
+`prisma/seed.ts` fills an empty database with development data. It is registered
+in `prisma7.config.ts` under `migrations.seed` and runs via `npx prisma db seed`
+from inside `apps/api`.
+
+**It is destructive by design.** Every run empties `recipe_ingredient`, `recipe`
+and `ingredient` — in that order, because foreign keys forbid the reverse — and
+writes the same recipes again. The result is identical on every run, which is
+the point: development against a known data set. `ingredient_alias` needs no
+call of its own, its foreign key cascades.
+
+Because `deleteMany()` without a `where` clause deletes every row without
+confirmation, the script refuses to run unless `DATABASE_URL` points at
+`localhost` or `127.0.0.1`.
+
+**It is not a delivery mechanism.** A handful of recipes is enough, because
+their only job is to prove that a shared ingredient resolves to a single
+`ingredient` row. Real recipes arrive through `POST /recipes` and, from V3, the
+URL importer — see [Shipped starter recipes](#shipped-starter-recipes).
+
+The seed is also the rehearsal for `POST /recipes`: normalise the name, `upsert`
+on `nameNormalized`, keep the returned ids in a `Map`, then write the recipes
+and their join rows — all inside one `$transaction`. Every call within that
+block goes through the transaction client `tx`, never through `prisma`, or it
+runs outside the transaction and is not rolled back with it.
+
 **`prisma format` completes as well as formats.** Given half a relation it will
 add the missing opposite field, move `@relation` to the side holding the foreign
 key, and turn a singular relation field into a list. It makes a schema *valid*,
@@ -324,12 +393,13 @@ lists its ingredients and each one navigates through to the ingredient itself.
 `unit` is a dropdown of the `Unit` enum, not a free-text field that lets you
 type a value the column will reject.
 
-**It writes through the Prisma client, so defaults are applied.** `id` and
-`updated_at` are filled in automatically. That matters here because
-`@default(uuid(7))` and `@updatedAt` are not part of the migration — Postgres
-knows nothing about them, the client generates both before sending the INSERT.
-A hand-written `INSERT` in psql that omits either column fails; the same row
-created in Studio does not.
+**It writes through the Prisma client, so client-side behaviour applies.** `id`,
+`created_at` and `updated_at` all have database-level defaults — see the
+`db_level_defaults` migration — so a hand-written `INSERT` in psql that omits
+them works too. What psql does *not* do is `@updatedAt`: a database default only
+fires on INSERT, so an `UPDATE` in psql leaves `updated_at` at its old value,
+while the same edit in Studio moves it. If a row's timestamp looks stale, that
+is usually why.
 
 It is worth having open while building `POST /recipes`: seeding an ingredient by
 hand and watching the join rows appear is faster feedback than a test run.
@@ -448,6 +518,40 @@ title, mobile friendly, WCAG AA.
 **V3** — recipe import from URLs via schema.org metadata.
 
 **V4** — multi-user operation. Designed, deliberately not built. See below.
+
+### Shipped starter recipes
+
+The application ships with an empty database, the way [Mealie](https://github.com/mealie-recipes/mealie)
+and [Tandoor Recipes](https://github.com/TandoorRecipes/recipes) do. Their value
+is the importer, not the content — people self-host a recipe app to keep *their
+own* recipes somewhere they control.
+
+The seed in `apps/api/prisma/seed.ts` is development fixtures only: a handful of
+recipes that prove shared ingredients resolve to a single `ingredient` row. It
+wipes the tables on every run and is not a delivery mechanism.
+
+Shipping a ready-made recipe library was considered and deferred to **after
+V3**, for two reasons.
+
+**Technical.** Every usable source lists ingredients as free text — `2 EL
+Olivenöl` in a single string — while `RecipeIngredient` wants `amount`, `unit`
+and `ingredientId` in three columns. The parser that splits them is the same one
+the V3 URL import has to build. Doing it earlier means writing it twice.
+
+**Licensing.** A recipe as a list of ingredients plus steps is generally not
+covered by copyright in Germany, but the wording of the instructions and the
+photographs are, and a collection such as Chefkoch is protected in its own right
+under database rights (§ 87a UrhG) regardless of the individual entries.
+Scraping one into a public AGPL repository is not an option. What is: own
+recipes, the German [Wikibooks Kochbuch](https://de.wikibooks.org/wiki/Kochbuch)
+(CC BY-SA 3.0, attribution required), or public-domain cookbooks. A CC BY-SA
+data set needs its own licence notice for the data directory, separate from the
+AGPL covering the code.
+
+When it is built it is a **separate mechanism from the seed**: a JSON file in
+the repository, imported on first start, idempotent, and possible to skip. Under
+V4 those entries become recipes with `visibility: PUBLIC` owned by a system user
+— see below.
 
 ### Multi-user (V4)
 
