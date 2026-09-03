@@ -12,8 +12,8 @@ datasource db {
   provider = "postgresql"
 }
 
-// ENUMS
-
+/** Enums for all used units inside the database. Does not provide the actual display name in frontend.
+e.g. "Tablespoon" or "TS" in frontend are the same enum */
 enum Unit {
   GRAM
   KILOGRAM
@@ -33,6 +33,7 @@ enum Unit {
   @@map("unit")
 }
 
+/** Recipe Model that provides all needed data for a whole recipe */
 model Recipe {
   id           String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
   title        String   @db.VarChar(50)
@@ -46,13 +47,13 @@ model Recipe {
   externalId   String?  @map("external_id") @db.VarChar(100)
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at")
-
   recipeIngredients RecipeIngredient[]
 
   @@unique([sourceName, externalId])
   @@map("recipe")
 }
 
+/** Model for a single ingredient, no matter if used in a recipe or not */
 model Ingredient {
   id                String             @id @default(dbgenerated("uuidv7()")) @db.Uuid
   name              String             @db.VarChar(120)
@@ -64,6 +65,7 @@ model Ingredient {
   @@map("ingredient")
 }
 
+/** This Model is used for alias names of specified ingredients. e.g. "Onions" and "Onion" */
 model IngredientAlias {
   id           String     @id @default(dbgenerated("uuidv7()")) @db.Uuid
   alias        String     @unique @db.VarChar(120)
@@ -73,6 +75,7 @@ model IngredientAlias {
   @@map("ingredient_alias")
 }
 
+/** This Model is used for ingredients which are used in a specific Recipe */
 model RecipeIngredient {
   id           String     @id @default(dbgenerated("uuidv7()")) @db.Uuid
   amount       Decimal?   @db.Decimal(8, 2)
