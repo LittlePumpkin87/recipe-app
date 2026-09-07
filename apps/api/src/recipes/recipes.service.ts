@@ -13,13 +13,16 @@ export class RecipesService {
 
   constructor(private readonly prisma: PrismaService) { }
 
-  async findAll(): Promise<RecipeListItemDto[]> {
+  async findAll(search?: string): Promise<RecipeListItemDto[]> {
+    const searchTerm = search?.trim();
     const recipes = await this.prisma.recipe.findMany({
+      where: {
+        title: searchTerm ? { contains: searchTerm, mode: 'insensitive',  } : undefined
+      },
       select: recipeListSelect,
       orderBy: { title: 'asc' },
     });
     return recipes.map(toRecipeListItem);
-
   }
 
   async findOne(id: string): Promise<RecipeDetailDto> {

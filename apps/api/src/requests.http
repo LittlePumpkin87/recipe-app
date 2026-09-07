@@ -1,0 +1,34 @@
+@host = http://localhost:3000
+
+### Standard-Endpunkt
+GET {{host}}/
+
+### Rezepte
+GET {{host}}/recipes
+
+### Zutaten
+GET {{host}}/ingredients
+
+### Einzelnes Rezept — id aus der Liste einsetzen
+GET {{host}}/recipes/01a05dfb-c62a-7443-9462-215ebebaf729
+
+### Unbekannte, aber gültige UUID -> 404
+GET {{host}}/recipes/01a05dfb-c62a-7443-9462-215ebebaf724
+
+### Keine UUID -> 400
+GET {{host}}/recipes/hallo
+
+### search request
+GET {{host}}/recipes?search=lang
+
+### search request
+GET {{host}}/recipes?search=LANGOS
+
+### search request
+GET {{host}}/recipes?search=brot
+
+### search request
+GET {{host}}/recipes?search=xyz
+
+### search request
+GET {{host}}/recipes?search=

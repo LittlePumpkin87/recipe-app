@@ -1,4 +1,4 @@
-import { Controller, Get, Param, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import { RecipesService } from './recipes.service';
 import { RecipeDetailDto, RecipeListItemDto } from './dto/recipe-response.dto';
 
@@ -10,8 +10,8 @@ export class RecipesController {
   constructor(private readonly recipesService: RecipesService) { }
 
   @Get()
-  findAll(): Promise<RecipeListItemDto[]> {
-    return this.recipesService.findAll();
+  findAll(@Query('search') search?: string): Promise<RecipeListItemDto[]> {
+    return this.recipesService.findAll(search);
   }
 
   @Get(':id')
