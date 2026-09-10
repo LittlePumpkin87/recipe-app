@@ -36,7 +36,7 @@ enum Unit {
 /** Recipe Model that provides all needed data for a whole recipe */
 model Recipe {
   id           String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
-  title        String   @db.VarChar(50)
+  title        String   @db.VarChar(100)
   description  String?
   instructions String
   servings     Int      @default(2)
