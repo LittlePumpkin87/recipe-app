@@ -1,5 +1,5 @@
 import { Prisma } from "../generated/prisma/client";
-import { IngredientDto } from "./dto/ingredient-response.dto";
+import { IngredientDto } from "./dto/ingredient.dto";
 
 
 /** The columns the ingredient endpoints return. `nameNormalized` is left out on

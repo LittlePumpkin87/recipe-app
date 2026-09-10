@@ -166,11 +166,75 @@ The API is compiled to CommonJS. `apps/api/tsconfig.json` sets
 `package.json`; since none is set, the emitted output is CommonJS and relative
 imports are written without a file extension.
 
-Every file opens with a JSDoc block placed directly above the declaration it
-describes — above the class, not above the imports — and it says *why* the file
-exists rather than what the code does. The position is what makes it useful:
-TypeScript attaches the text to the symbol, so hovering `PrismaService`
-anywhere in the editor shows it without opening the file or this README.
+A JSDoc block is written only where deleting it would lose information: why a
+file exists, a promise the types cannot express (a sort order, an `amount`
+already converted from `Decimal`), or a deliberate absence — such as the missing
+lookup before the insert in `IngredientsService.create`. A block that restates a
+name or a field list is left out, so a self-explanatory interface gets none.
+Where a block exists, it sits directly above the declaration, not above the
+imports: TypeScript attaches the text to the symbol, so hovering
+`PrismaService` anywhere in the editor shows it without opening the file.
+
+### DTOs, mappers and validation
+
+No Prisma row ever leaves a service. Each feature folder holds a `dto/` folder
+and a mapper, and the three shapes involved are deliberately different:
+
+| | Prisma model | Response DTO | Request DTO |
+|---|---|---|---|
+| Describes | how a row is stored | what the API returns | what a client may send |
+| `ingredient.id` | ✓ | ✓ | —, Postgres assigns it |
+| `ingredient.nameNormalized` | ✓ | — | —, the service derives it |
+
+`RecipeDetailDto` shows why this is not busywork: it exposes a field called
+`ingredients` that exists in no table. In the database the relation is called
+`recipeIngredients` and the ingredient name sits one table deeper; the mapper
+pulls it up and converts `amount` from a Prisma `Decimal` to a plain number,
+which would otherwise serialise as a quoted string. The list DTO drops
+`instructions` entirely so the overview stays small as the recipe count grows.
+
+Each mapper derives its input type from the same `select` or `include` constant
+the service queries with — `Prisma.RecipeGetPayload<{ select: typeof
+recipeListSelect }>` — so a column removed from the query becomes a compiler
+error in the mapper rather than an `undefined` in a response.
+
+**Response DTOs are interfaces, request DTOs are classes.** That is not a style
+choice. `main.ts` registers a global `ValidationPipe`:
+
+```ts
+app.useGlobalPipes(
+  new ValidationPipe({
+    whitelist: true,
+    forbidNonWhitelisted: true,
+    transform: true,
+  }),
+);
+```
+
+A pipe runs between the request and the controller method: it receives the raw
+value, returns the value the parameter will hold, or throws. `ParseUUIDPipe` on
+`GET /recipes/:id` is the same mechanism in its smallest form.
+
+The `class-validator` decorators — `@IsString()`, `@MaxLength(120)` — do not
+check anything by themselves. They register metadata, and the pipe is what calls
+`validate()` and reads it. To know *which* class to validate against, the pipe
+reads the declared type of the parameter, which the compiler emits thanks to
+`emitDecoratorMetadata`. An interface is erased at compile time and leaves
+nothing to read, so a request DTO written as an interface would be waved
+through unchecked. Response DTOs are never validated and stay interfaces.
+
+The three options each buy something specific. `whitelist` drops properties that
+carry no validation decorator, so a client cannot smuggle in an `id`.
+`forbidNonWhitelisted` turns that silent drop into a 400 naming the field, which
+is the difference between debugging a typo and not noticing it. `transform`
+turns the parsed JSON into a real instance of the DTO class, which is what
+nested DTOs and type coercion need.
+
+Validation rules belong in the DTO even where the database has its own
+constraint. `NOT NULL` forbids `NULL`, not `""` — a minimum length is an API
+question. `@MaxLength(120)` mirrors `@db.VarChar(120)` on purpose: the database
+protects itself, the DTO tells the client what is allowed, and the difference
+shows up as a 400 with a field name instead of a 500 with a database error.
 
 ## Data model
 
@@ -408,15 +472,40 @@ hand and watching the join rows appear is faster feedback than a test run.
 
 V1 only. There is no login, and no endpoint is authenticated.
 
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/recipes` | List, with optional `?search=` on the title |
-| GET | `/recipes/:id` | Single recipe including its ingredients |
-| POST | `/recipes` | Create, including the ingredient list |
-| PATCH | `/recipes/:id` | Update |
-| DELETE | `/recipes/:id` | Delete |
-| GET | `/ingredients` | Autocomplete, `?search=`, capped at 20 results |
-| POST | `/ingredients` | Create an ingredient |
+| Method | Path | Purpose | Status |
+|---|---|---|---|
+| GET | `/recipes` | List, with optional `?search=` on the title | built |
+| GET | `/recipes/:id` | Single recipe including its ingredients | built |
+| POST | `/recipes` | Create, including the ingredient list | planned |
+| PATCH | `/recipes/:id` | Update | planned |
+| DELETE | `/recipes/:id` | Delete | planned |
+| GET | `/ingredients` | Autocomplete, `?search=`, capped at 20 results | built |
+| POST | `/ingredients` | Create an ingredient, 409 if the name exists | built |
+
+### How the two searches differ
+
+Both search endpoints take `?search=` and both match on a substring, but they
+compare against different columns, and the reason is worth knowing before
+copying one into the other.
+
+`GET /recipes?search=` filters on `recipe.title`, which stores the display form.
+There is no second column to compare against, so the query asks Postgres to
+ignore case with `mode: 'insensitive'` — Prisma turns that into `ILIKE`.
+
+`GET /ingredients?search=` filters on `ingredient.nameNormalized` and pushes the
+search term through the same `normalizeIngredientName` that wrote the column.
+Both sides are lowercase, trimmed and NFC-normalized by the time they meet, so
+no `mode` is needed. It is also the more correct of the two: `ILIKE` handles
+case, but not an `ö` that arrived as `o` plus a combining diaeresis — a real
+possibility with text pasted from elsewhere.
+
+The rule that follows: **compare against `nameNormalized`, display `name`.** It
+holds for the search, for `POST /ingredients` and for the lookup inside
+`POST /recipes`.
+
+Recipe titles have no normalized column and do not need one. `?search=roemer`
+finding *Römertopfbrot* is a nice-to-have; an ingredient list that grows a
+second `Öl` row is a data defect.
 
 `POST /recipes` receives the recipe and its ingredient list in a single request.
 For each ingredient the service has to decide whether it already exists (link
@@ -427,6 +516,29 @@ in **one transaction**: a failure halfway through must leave nothing behind.
 There is deliberately no endpoint for managing aliases in V1. The table is read
 by the lookup but filled by hand through `prisma studio` — aliases are rare
 exceptions until the V3 importer starts producing them.
+
+### Duplicates: let the constraint decide
+
+`POST /ingredients` does not look for an existing row before it writes. It
+inserts, and the unique index on `ingredient.name_normalized` decides. If the
+name is taken, Postgres refuses the insert, Prisma raises error code `P2002`,
+and the service turns that into `409 Conflict`.
+
+A lookup first would not save the catch, only add a query. Two requests for
+"Zwiebel" arriving together would both find nothing and both insert, and the
+second would still hit the index — as an unhandled 500. The index is the only
+check that holds when requests overlap, so it is the only check.
+`POST /recipes` relies on the same index for the ingredients it creates.
+
+Two consequences worth knowing:
+
+- **The first spelling wins.** `" ZWIEBEL "` and `"Zwiebel"` normalize to the
+  same value, so whichever arrives second is refused, and the ingredient keeps
+  the display form of the first. There is no `PATCH /ingredients` in V1;
+  rename it in Prisma Studio.
+- **Aliases are not checked here.** A name that exists only as an
+  `ingredientAlias.alias` is accepted as a new ingredient. The alias lookup
+  belongs to `POST /recipes`, and the table stays empty until someone fills it.
 
 ## Working with the database
 

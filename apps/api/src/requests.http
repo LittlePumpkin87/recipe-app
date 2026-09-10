@@ -32,3 +32,15 @@ GET {{host}}/recipes?search=xyz
 
 ### search request
 GET {{host}}/recipes?search=
+
+### post ingredient
+POST {{host}}/ingredients
+Content-Type: application/json
+
+{ "name": "Paprika", "defaultUnit": "PIECE" }
+
+### post ingredient
+POST {{host}}/ingredients
+Content-Type: application/json
+
+{ "name": "Lauch", "id": "abc" }

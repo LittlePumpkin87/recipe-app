@@ -1,10 +1,11 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { IngredientsService } from './ingredients.service';
-import { IngredientDto } from './dto/ingredient-response.dto';
+import { CreateIngredientDto, IngredientDto } from './dto/ingredient.dto';
 
-/** Maps the /ingredients HTTP endpoints onto IngredientsService. In V1 these
-serve the autocomplete in the recipe form, which is what keeps duplicate
-ingredients out of the database. */
+/** Maps the /ingredients HTTP endpoints onto IngredientsService. In V1 they
+serve the recipe form: GET feeds the autocomplete that steers users to an
+existing ingredient, POST creates a new one and answers 409 if it exists after
+all. */
 @Controller('ingredients')
 export class IngredientsController {
   constructor(private readonly ingredientService: IngredientsService) { }
@@ -13,4 +14,10 @@ export class IngredientsController {
   findAll(@Query('search') search?: string): Promise<IngredientDto[]> {
     return this.ingredientService.findAll(search);
   }
+
+  @Post()
+  create(@Body() dto: CreateIngredientDto): Promise<IngredientDto> {
+    return this.ingredientService.create(dto);
+  }
+
 }
