@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { recipeIngredientInclude, recipeListSelect, toRecipeDetail, toRecipeListItem } from './recipes.mapper';
-import { RecipeListItemDto, RecipeDetailDto } from './dto/recipe-response.dto';
+import { RecipeListItemDto, RecipeDetailDto } from './dto/recipe.dto';
 
 /** Business logic for recipes, and the only place a database query for them
 may live. The two read paths fetch deliberately different shapes: the list

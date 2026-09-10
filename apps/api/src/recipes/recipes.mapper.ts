@@ -1,5 +1,5 @@
 import { Prisma } from "../generated/prisma/client";
-import { RecipeDetailDto, RecipeIngredientDto, RecipeListItemDto } from "./dto/recipe-response.dto";
+import { RecipeDetailDto, RecipeIngredientDto, RecipeListItemDto } from "./dto/recipe.dto";
 
 /** The query shape the detail mapper depends on. Exported because the service
 must fetch with exactly this include: the mapper derives its input type from

@@ -1,6 +1,6 @@
 import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import { RecipesService } from './recipes.service';
-import { RecipeDetailDto, RecipeListItemDto } from './dto/recipe-response.dto';
+import { RecipeDetailDto, RecipeListItemDto } from './dto/recipe.dto';
 
 /** Maps the /recipes HTTP endpoints onto RecipesService. Holds no
 business logic: what a recipe is and where it comes from is the service's
