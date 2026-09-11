@@ -105,14 +105,14 @@ function assertLocalDatabase(): void {
 
 // Write steps
 
-async function clearTables(tx: Prisma.TransactionClient): Promise<void> {
-    await tx.recipeIngredient.deleteMany();
-    await tx.recipe.deleteMany();
-    await tx.ingredient.deleteMany();
+async function clearTables(transactionClient: Prisma.TransactionClient): Promise<void> {
+    await transactionClient.recipeIngredient.deleteMany();
+    await transactionClient.recipe.deleteMany();
+    await transactionClient.ingredient.deleteMany();
 }
 
 async function seedIngredients(
-    tx: Prisma.TransactionClient,
+    transactionClient: Prisma.TransactionClient,
     data: SeedRecipe[],
 ): Promise<Map<string, string>> {
     const unique = new Map<string, SeedIngredientLine>();
@@ -129,7 +129,7 @@ async function seedIngredients(
     const ids = new Map<string, string>();
 
     for (const [key, line] of unique) {
-        const ingredient = await tx.ingredient.upsert({
+        const ingredient = await transactionClient.ingredient.upsert({
             where: { nameNormalized: key },
             update: {},
             create: {
@@ -146,12 +146,12 @@ async function seedIngredients(
 }
 
 async function seedRecipes(
-    tx: Prisma.TransactionClient,
+    transactionClient: Prisma.TransactionClient,
     data: SeedRecipe[],
     ingredientIds: Map<string, string>,
 ): Promise<void> {
     for (const recipe of data) {
-        await tx.recipe.create({
+        await transactionClient.recipe.create({
             data: {
                 title: recipe.title,
                 description: recipe.description,
@@ -187,10 +187,10 @@ async function seedRecipes(
 async function main(): Promise<void> {
     assertLocalDatabase();
 
-    await prisma.$transaction(async (tx) => {
-        await clearTables(tx);
-        const ingredientIds = await seedIngredients(tx, recipes);
-        await seedRecipes(tx, recipes, ingredientIds);
+    await prisma.$transaction(async (transactionClient) => {
+        await clearTables(transactionClient);
+        const ingredientIds = await seedIngredients(transactionClient, recipes);
+        await seedRecipes(transactionClient, recipes, ingredientIds);
 
         console.log(`Seeded ${recipes.length} recipes, ${ingredientIds.size} ingredients.`);
     });
