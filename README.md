@@ -374,6 +374,7 @@ The schema lives in `apps/api/prisma/schema.prisma`, migrations in
 cd apps/api
 
 npx prisma migrate dev --name <name>   # create and apply a migration
+npx prisma migrate dev --name <name> --create-only   # write the SQL only, apply later
 npx prisma migrate deploy              # apply existing migrations (production)
 npx prisma db seed                     # wipe and rewrite the development data
 npx prisma studio                      # browse and edit data in the browser
@@ -386,6 +387,15 @@ npx prisma format                      # format and complete relations
 directory, and `apps/api/prisma7.config.ts` loads the repository-root `.env`
 explicitly, two levels up, before handing `DATABASE_URL` to the datasource. That
 config file exists precisely because the `.env` does not sit next to the schema.
+
+**Read a migration that touches existing data before it runs.** `--create-only`
+writes the SQL file without applying it; read it, then run `npx prisma migrate
+dev`. One trap: `--create-only` only holds back the *new* migration. `migrate
+dev` always applies pending migrations first, so running `--create-only` a
+second time applies the first one — and, finding nothing left to change, writes
+an empty migration next to it. Delete an empty one before it is applied; once it
+is recorded in `_prisma_migrations`, removing the folder makes Prisma report the
+history as out of sync.
 
 **Migration files are committed.** Prisma writes plain SQL into
 `prisma/migrations/<timestamp>_<name>/migration.sql`, and the applied history is
@@ -683,39 +693,36 @@ Do not install the `postgresql` package to get a client — it brings a server
 that binds to port 5432 and will collide with the container. Install
 `postgresql-client` instead.
 
-### Timestamps are UTC
+### Timestamps
 
-`created_at` and `updated_at` hold UTC. A change made at 11:43 in Berlin in
-summer reads `09:43` in psql. Nothing is wrong; the conversion to local time
-belongs to whoever displays the value.
+`created_at` and `updated_at` are `timestamptz(3)` — *timestamp with time
+zone*. Despite the name, no zone is stored: the column holds an exact moment,
+kept internally as UTC, and converts it on output into the time zone of the
+connection, with the offset attached. A change made at 11:43 in Berlin in summer
+reads `2026-09-11 09:43:05+00` in a UTC session and `2026-09-11 11:43:05+02`
+after `SET timezone = 'Europe/Berlin';` — the same moment, spelled two ways.
+Some SQL clients convert to local time on their own.
 
-The columns are `timestamp(3)` — in full, *timestamp without time zone*. That
-type stores a date and a clock reading and nothing else: `2026-09-11 09:43:05`,
-with no record of which zone the reading belongs to. That it means UTC is a
-convention: Prisma writes UTC, and the database defaults run in the container's
-time zone, which is UTC as well. To read local time in psql, both halves of the
-conversion have to be spelled out — the first declares the stored value to be
-UTC, the second converts it:
+Until the `timestamptz` migration the columns were plain `timestamp(3)`,
+*without* time zone: a date and a clock reading, `09:43:05`, with nothing to say
+which zone it belongs to. That it meant UTC was a convention Prisma kept; every
+other writer — psql, a trigger, the .NET backend — would have had to know it
+too. The PostgreSQL wiki's "Don't Do This" page advises against plain
+`timestamp` for exactly this reason. The migration converted the existing values
+by reading them in the session's time zone, which is UTC in the container, so
+they stayed correct. `SHOW timezone;` is the check to run before such a
+migration.
 
-```sql
-SELECT updated_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Berlin' FROM recipe;
-```
+Converting to a user's local time is the frontend's job. The API sends
+`"2026-09-11T09:43:05.123Z"`, and Angular's `DatePipe` formats it in the
+browser's time zone; neither the API nor the database needs to know where a user
+is.
 
-The alternative is `timestamptz`, *timestamp with time zone*. Despite the name
-it stores no zone either: it stores an exact moment, kept internally as UTC,
-and converts it on output into the time zone of the connection, with the offset
-attached. The same moment then reads `2026-09-11 09:43:05+00` in the container,
-and `2026-09-11 11:43:05+02` after `SET timezone = 'Europe/Berlin';`. The
-PostgreSQL wiki's "Don't Do This" page advises against plain `timestamp` for
-exactly this ambiguity. Moving the columns to `timestamptz` is a one-line change
-per column in the schema (`@db.Timestamptz(3)`) plus a migration, and is on the
-list of decisions before the .NET backend — see
-[Second backend: ASP.NET Core](#second-backend-aspnet-core).
-
-Do **not** fix the display by changing the database's own time zone setting.
-With plain `timestamp` columns its defaults would then write Berlin time into the
-same columns into which Prisma keeps writing UTC, and the column would hold a mix
-of both, with nothing to tell them apart.
+**Moments and days are different types.** Something that *happened* — created,
+edited — is a moment and gets `timestamptz`. Something *planned for a day*, such
+as a V2 meal plan entry for Tuesday, 15 September, is a calendar date and gets
+`date`. Stored as a moment it would be midnight UTC, which a user in New York
+sees as Monday, 8 pm — and the soup lands on the wrong day.
 
 ### Things that will bite you
 
@@ -803,7 +810,7 @@ backend therefore reads the existing tables — database first, via
 `dotnet ef dbcontext scaffold` — and never creates a migration. Every schema
 change still starts in `schema.prisma`.
 
-Four things the two backends have to agree on without the database enforcing
+Three things the two backends have to agree on without the database enforcing
 them:
 
 - **`updatedAt`.** `@updatedAt` is Prisma client behaviour, not a database
@@ -814,10 +821,6 @@ them:
   recipe's `UPDATE` entirely (see the PATCH section). A Postgres trigger that
   sets `updated_at` on every `UPDATE` would move the rule into the database for
   both backends; it is decided together with the normalization question.
-- **Timestamps.** The columns are `timestamp` without a time zone, holding UTC by
-  convention only. Npgsql refuses to write a UTC `DateTime` into such a column,
-  so either every value is handled as "unspecified" in C#, or the columns move
-  to `timestamptz` first, which Prisma and Npgsql both map without surprises.
 - **Name normalization.** The rule that `normalizeIngredientName` exists in
   exactly one place cannot hold across two languages. A C# version that skipped
   NFC would let an existing ingredient in a second time, as a row the unique
@@ -828,6 +831,11 @@ them:
 - **The `unit` enum and UUID v7.** Npgsql, the .NET driver for PostgreSQL, has
   to be told explicitly about the Postgres enum type `unit`, and EF Core has to
   leave `id` to the database the way Prisma does.
+
+Timestamps were a fourth such point and were settled in the database before the
+.NET work began: `created_at` and `updated_at` are `timestamptz`, which Npgsql
+maps to a `DateTime` of kind `Utc`. With plain `timestamp` columns it would have
+refused to write a UTC `DateTime` at all. See [Timestamps](#timestamps).
 
 Whether both backends are carried on into V2 is open.
 

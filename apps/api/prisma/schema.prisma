@@ -45,8 +45,8 @@ model Recipe {
   sourceUrl    String?  @map("source_url")
   sourceName   String?  @map("source_name") @db.VarChar(150)
   externalId   String?  @map("external_id") @db.VarChar(100)
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
   recipeIngredients RecipeIngredient[]
 
   @@unique([sourceName, externalId])
