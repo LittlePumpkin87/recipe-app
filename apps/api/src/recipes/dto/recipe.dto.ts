@@ -1,6 +1,7 @@
 import { Transform, Type } from "class-transformer";
 import { Unit } from "../../generated/prisma/client";
-import { ArrayNotEmpty, IsArray, IsEnum, IsInt, IsNotEmpty, IsNumber, IsOptional, IsPositive, IsString, Max, MaxLength, Min, ValidateNested } from "class-validator";
+import { ArrayNotEmpty, IsArray, IsEnum, IsInt, IsNotEmpty, IsNumber, IsOptional, IsPositive, IsString, Max, MaxLength, Min, ValidateIf, ValidateNested } from "class-validator";
+import { PartialType } from "@nestjs/mapped-types";
 
 export interface RecipeListItemDto {
     id: string;
@@ -69,9 +70,9 @@ export class CreateRecipeDto {
     @MaxLength(100)
     title: string
 
+    @ValidateIf((_, value) => value !== undefined)
     @IsInt()
     @Min(1)
-    @IsOptional()
     servings?: number
 
     @IsOptional()
@@ -100,3 +101,13 @@ export class CreateRecipeDto {
     @Type(() => CreateRecipeIngredientDto)
     ingredients: CreateRecipeIngredientDto[];
 }
+
+/** Every field of CreateRecipeDto, each one optional: a missing field is left
+untouched. `skipNullProperties: false` makes the difference between missing and
+`null` — without it PartialType adds `@IsOptional`, which lets `null` through,
+and `"title": null` would pass validation only to fail in Prisma as a 500.
+Fields that may be cleared keep their own `@IsOptional` from the create DTO. A
+present `ingredients` replaces the whole list. */
+export class UpdateRecipeDto extends PartialType(CreateRecipeDto, {
+    skipNullProperties: false,
+}) { }

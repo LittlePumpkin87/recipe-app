@@ -1,6 +1,6 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { RecipesService } from './recipes.service';
-import { CreateRecipeDto, RecipeDetailDto, RecipeListItemDto } from './dto/recipe.dto';
+import { CreateRecipeDto, RecipeDetailDto, RecipeListItemDto, UpdateRecipeDto } from './dto/recipe.dto';
 
 /** Maps the /recipes HTTP endpoints onto RecipesService. Holds no
 business logic: what a recipe is and where it comes from is the service's
@@ -28,7 +28,12 @@ export class RecipesController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  remove(@Param('id', new ParseUUIDPipe({ version: '7'})) id: string) {
+  remove(@Param('id', new ParseUUIDPipe({ version: '7' })) id: string) {
     return this.recipesService.remove(id);
+  }
+
+  @Patch(':id')
+  update(@Param('id', new ParseUUIDPipe({ version: '7' })) id: string, @Body() dto: UpdateRecipeDto): Promise<RecipeDetailDto> {
+    return this.recipesService.update(id, dto);
   }
 }

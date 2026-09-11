@@ -39,12 +39,14 @@ GET {{host}}/recipes/hallo
 
 ### ───────────── POST /recipes ─────────────
 
-### Rezept anlegen -> 201 (zweimal senden: "Kartoffeln" bleibt eine Zutat, Position 3 und 4 zeigen beide auf Salz)
+### Rezept anlegen -> 201 (zweimal senden: "Kartoffeln" bleibt eine Zutat,
+### Position 3 und 4 zeigen beide auf Salz)
 POST {{host}}/recipes
 Content-Type: application/json
 
 {
-  "title": "Kartoffelsuppe",
+  "title": "Möhrchenbrei oder so?!",
+  "description": "Omas Kartoffelsuppe",
   "instructions": "Kartoffeln schälen …",
   "ingredients": [
     { "name": "Kartoffeln", "amount": 800, "unit": "GRAM" },
@@ -102,9 +104,91 @@ Content-Type: application/json
 }
 
 
+### servings null -> 400 (@ValidateIf, vorher 500 aus Prisma)
+POST {{host}}/recipes
+Content-Type: application/json
+
+{
+  "title": "Kartoffelsuppe",
+  "instructions": "Kartoffeln schälen …",
+  "servings": null,
+  "ingredients": [
+    { "name": "Kartoffeln", "amount": 800, "unit": "GRAM" }
+  ]
+}
+
+
+### ───────────── PATCH /recipes/:id ─────────────
+### Platzhalter-id ist unbekannt (-> 404). Für die 200er die id
+### einer Kartoffelsuppe aus der POST-Antwort einsetzen.
+
+### Nur Titel ändern -> 200, Zutatenliste bleibt unverändert
+PATCH {{host}}/recipes/01a0902f-0ec5-731a-bc80-d6392f00aaf6
+Content-Type: application/json
+
+{ "title": "Kartoffelcremesuppe" }
+
+### Beschreibung mit null leeren -> 200, description ist danach null
+PATCH {{host}}/recipes/01a0902f-0ec5-731a-bc80-d6392f00aaf6
+Content-Type: application/json
+
+{ "description": null }
+
+### Nur Zutatenliste ersetzen -> 200 (Mehl 2 EL, Pfeffer neu,
+### "Salz nach Geschmack" entfernt, Positionen 1–4; prüfen: ändert sich updated_at?)
+PATCH {{host}}/recipes/01a0903a-bb99-7ba6-ba6f-6bf938ac2518
+Content-Type: application/json
+
+{
+  "ingredients": [
+    { "name": "Milch", "amount": 800, "unit": "MILLILITER" },
+    { "name": "Mehl", "amount": 2, "unit": "TABLESPOON", "note": "zum Binden" },
+    { "name": "oregano", "amount": 1, "unit": "TEASPOON" },
+    { "name": "Pfeffer", "amount": 1, "unit": "PINCH" }
+  ]
+}
+
+### title null -> 400 (skipNullProperties: false)
+PATCH {{host}}/recipes/01a0902b-4ee9-78c1-921c-8c87a3ecc923
+Content-Type: application/json
+
+{ "title": null }
+
+### servings null -> 400
+PATCH {{host}}/recipes/01a0902b-4ee9-78c1-921c-8c87a3ecc923
+Content-Type: application/json
+
+{ "servings": null }
+
+### Leere Zutatenliste -> 400 (@ArrayNotEmpty, aus dem Create-DTO geerbt)
+PATCH {{host}}/recipes/01a0902b-4ee9-78c1-921c-8c87a3ecc923
+Content-Type: application/json
+
+{ "ingredients": [] }
+
+### Unbekannte, aber gültige UUID -> 404, und "Testpfeffer"
+### darf danach nicht in ingredient stehen
+PATCH {{host}}/recipes/01a05dfb-c62a-7443-9462-215ebebaf724
+Content-Type: application/json
+
+{
+  "title": "Gibt es nicht",
+  "ingredients": [
+    { "name": "Testpfeffer", "amount": 1, "unit": "PINCH" }
+  ]
+}
+
+### Keine UUID -> 400
+PATCH {{host}}/recipes/hallo
+Content-Type: application/json
+
+{ "title": "Kartoffelcremesuppe" }
+
+
 ### ───────────── DELETE /recipes/:id ─────────────
 
-### Rezept löschen — id aus der POST-Antwort einsetzen -> 204 ohne Body (zweimal senden: beim zweiten Mal 404)
+### Rezept löschen — id aus der POST-Antwort einsetzen
+### -> 204 ohne Body (zweimal senden: beim zweiten Mal 404)
 DELETE {{host}}/recipes/01a05dfb-c62a-7443-9462-215ebebaf729
 
 ### Unbekannte, aber gültige UUID -> 404

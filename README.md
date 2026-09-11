@@ -242,6 +242,17 @@ question. `@MaxLength(120)` mirrors `@db.VarChar(120)` on purpose: the database
 protects itself, the DTO tells the client what is allowed, and the difference
 shows up as a 400 with a field name instead of a 500 with a database error.
 
+**Optional is not the same as nullable.** `@IsOptional()` skips every other rule
+when a value is `undefined` *or* `null`. That is right for a column that may be
+empty — `"description": null` clears the description — and wrong for one that
+may not: `"servings": null` would pass validation and then fail inside Prisma,
+because the column is `NOT NULL`, as a 500. Such fields use
+`@ValidateIf((_, value) => value !== undefined)` instead: a missing value is
+skipped, `null` is validated and rejected with a 400. `UpdateRecipeDto` is built
+with `PartialType(CreateRecipeDto, { skipNullProperties: false })` for the same
+reason — the option makes `PartialType` add that `@ValidateIf` rather than
+`@IsOptional` to every field it turns optional.
+
 ## Data model
 
 Four models and one enum. The join table carries the amount, the unit and three
@@ -486,7 +497,7 @@ V1 only. There is no login, and no endpoint is authenticated.
 | GET | `/recipes` | List, with optional `?search=` on the title | built |
 | GET | `/recipes/:id` | Single recipe including its ingredients | built |
 | POST | `/recipes` | Create, including the ingredient list | built |
-| PATCH | `/recipes/:id` | Update | planned |
+| PATCH | `/recipes/:id` | Update; a present ingredient list replaces the old one | built |
 | DELETE | `/recipes/:id` | Delete, `204` without a body | built |
 | GET | `/ingredients` | Autocomplete, `?search=`, capped at 20 results | built |
 | POST | `/ingredients` | Create an ingredient, 409 if the name exists | built |
@@ -546,9 +557,12 @@ server log.
 On success the response is `201` with the same shape as `GET /recipes/:id`. The
 mapper runs after the commit, outside the transaction.
 
-**Aliases are not consulted yet.** `create()` looks at `nameNormalized` only, so
-a name that exists solely as an `ingredientAlias.alias` becomes a new
-ingredient. There is deliberately no endpoint for managing aliases in V1 either:
+**Aliases are not consulted in V1.** `resolveIngredientIds`, shared by
+`POST /recipes` and `PATCH /recipes/:id`, looks at `nameNormalized` only, so a
+name that exists solely as an `ingredientAlias.alias` becomes a new ingredient.
+The alias lookup arrives with the V3 importer, the first source of spellings
+nobody typed in by hand; until then the autocomplete in the recipe form is the
+protection against duplicates. There is deliberately no endpoint for managing aliases in V1 either:
 the table is meant to be filled by hand through `prisma studio`, and aliases are
 rare exceptions until the V3 importer starts producing them.
 
@@ -566,6 +580,47 @@ The service deletes without looking first, for the same reason `POST
 error `P2025` and becomes a `404`. A successful delete answers `204 No Content`,
 since the client already knows which recipe it removed. A second `DELETE` on the
 same id answers `404`.
+
+### `PATCH /recipes/:id`: fields in place, ingredient list replaced
+
+A field missing from the request is left untouched: Prisma treats `undefined` as
+"do not change", so `{ "title": "…" }` renames the recipe and nothing else.
+`null` is different — it clears a nullable column such as `description`, and is
+rejected with a `400` for a `NOT NULL` one (see "Optional is not the same as
+nullable" under [DTOs, mappers and validation](#dtos-mappers-and-validation)).
+
+A present `ingredients` replaces the whole list. Inside one transaction the
+service updates the recipe's own fields, resolves the ingredient names exactly
+as `POST /recipes` does — both call the same private `resolveIngredientIds` —
+deletes every `recipe_ingredient` row of the recipe and writes the new list,
+positions again taken from the index. An ingredient that dropped out of the list
+is unlinked, not deleted; it stays in `ingredient` for other recipes.
+
+`updatedAt` is set explicitly in the update. A request carrying only
+`ingredients` leaves every recipe field `undefined`; Prisma then sends no
+`UPDATE` for the recipe at all, and `@updatedAt`, which only rides along on an
+`UPDATE`, never fires — a recipe whose flour went from one to two tablespoons
+would look untouched. This was found by comparing `updated_at` in psql before
+and after such a request.
+
+Replacing gives the join rows new ids on every edit. That is harmless as long as
+nothing points at a single row: the meal plan will point at recipes, the
+shopping list at ingredients, nutrition figures at either. Should that change,
+the rows already carry their own `id`, so a line-by-line comparison would change
+the API and the service, not the schema.
+
+**The order inside the transaction matters.** The recipe update runs first. For
+an unknown id it raises `P2025` before anything has been written, and the
+service answers `404`. Resolving the ingredients first would create ingredients
+for a recipe that does not exist, and inserting the join rows would then fail on
+the foreign key with `P2003` — rolled back all the same, but answered with a
+`500`. The `catch` sits around the whole `$transaction`, never inside the
+callback: an error caught in there would let the callback finish normally, and
+Prisma would commit.
+
+On success the response is `200` with the updated recipe, read with
+`findUniqueOrThrow` at the end of the transaction — a query that already sees
+the transaction's own, not yet committed writes.
 
 ### Duplicates: let the constraint decide
 
@@ -588,7 +643,8 @@ Two consequences worth knowing:
   rename it in Prisma Studio.
 - **Aliases are not checked here.** A name that exists only as an
   `ingredientAlias.alias` is accepted as a new ingredient. The alias lookup
-  belongs to `POST /recipes`, and the table stays empty until someone fills it.
+  arrives with the V3 importer, in the ingredient resolution shared by
+  `POST /recipes` and `PATCH /recipes/:id`.
 
 ## Working with the database
 
@@ -626,6 +682,40 @@ and therefore does **not** verify the published port, the password in
 Do not install the `postgresql` package to get a client — it brings a server
 that binds to port 5432 and will collide with the container. Install
 `postgresql-client` instead.
+
+### Timestamps are UTC
+
+`created_at` and `updated_at` hold UTC. A change made at 11:43 in Berlin in
+summer reads `09:43` in psql. Nothing is wrong; the conversion to local time
+belongs to whoever displays the value.
+
+The columns are `timestamp(3)` — in full, *timestamp without time zone*. That
+type stores a date and a clock reading and nothing else: `2026-09-11 09:43:05`,
+with no record of which zone the reading belongs to. That it means UTC is a
+convention: Prisma writes UTC, and the database defaults run in the container's
+time zone, which is UTC as well. To read local time in psql, both halves of the
+conversion have to be spelled out — the first declares the stored value to be
+UTC, the second converts it:
+
+```sql
+SELECT updated_at AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Berlin' FROM recipe;
+```
+
+The alternative is `timestamptz`, *timestamp with time zone*. Despite the name
+it stores no zone either: it stores an exact moment, kept internally as UTC,
+and converts it on output into the time zone of the connection, with the offset
+attached. The same moment then reads `2026-09-11 09:43:05+00` in the container,
+and `2026-09-11 11:43:05+02` after `SET timezone = 'Europe/Berlin';`. The
+PostgreSQL wiki's "Don't Do This" page advises against plain `timestamp` for
+exactly this ambiguity. Moving the columns to `timestamptz` is a one-line change
+per column in the schema (`@db.Timestamptz(3)`) plus a migration, and is on the
+list of decisions before the .NET backend — see
+[Second backend: ASP.NET Core](#second-backend-aspnet-core).
+
+Do **not** fix the display by changing the database's own time zone setting.
+With plain `timestamp` columns its defaults would then write Berlin time into the
+same columns into which Prisma keeps writing UTC, and the column would hold a mix
+of both, with nothing to tell them apart.
 
 ### Things that will bite you
 
@@ -713,13 +803,21 @@ backend therefore reads the existing tables — database first, via
 `dotnet ef dbcontext scaffold` — and never creates a migration. Every schema
 change still starts in `schema.prisma`.
 
-Three things the two backends have to agree on without the database enforcing
+Four things the two backends have to agree on without the database enforcing
 them:
 
 - **`updatedAt`.** `@updatedAt` is Prisma client behaviour, not a database
   default (see [Prisma Studio](#prisma-studio)). EF Core knows nothing about it,
   so the .NET backend has to set `updated_at` on every update itself, or edited
-  recipes keep their creation timestamp.
+  recipes keep their creation timestamp. The NestJS backend already had to
+  learn this once: an update carrying only the ingredient list skipped the
+  recipe's `UPDATE` entirely (see the PATCH section). A Postgres trigger that
+  sets `updated_at` on every `UPDATE` would move the rule into the database for
+  both backends; it is decided together with the normalization question.
+- **Timestamps.** The columns are `timestamp` without a time zone, holding UTC by
+  convention only. Npgsql refuses to write a UTC `DateTime` into such a column,
+  so either every value is handled as "unspecified" in C#, or the columns move
+  to `timestamptz` first, which Prisma and Npgsql both map without surprises.
 - **Name normalization.** The rule that `normalizeIngredientName` exists in
   exactly one place cannot hold across two languages. A C# version that skipped
   NFC would let an existing ingredient in a second time, as a row the unique
