@@ -480,7 +480,7 @@ V1 only. There is no login, and no endpoint is authenticated.
 |---|---|---|---|
 | GET | `/recipes` | List, with optional `?search=` on the title | built |
 | GET | `/recipes/:id` | Single recipe including its ingredients | built |
-| POST | `/recipes` | Create, including the ingredient list | planned |
+| POST | `/recipes` | Create, including the ingredient list | built |
 | PATCH | `/recipes/:id` | Update | planned |
 | DELETE | `/recipes/:id` | Delete | planned |
 | GET | `/ingredients` | Autocomplete, `?search=`, capped at 20 results | built |
@@ -511,15 +511,41 @@ Recipe titles have no normalized column and do not need one. `?search=roemer`
 finding *Römertopfbrot* is a nice-to-have; an ingredient list that grows a
 second `Öl` row is a data defect.
 
-`POST /recipes` receives the recipe and its ingredient list in a single request.
-For each ingredient the service has to decide whether it already exists (link
-it) or is new (create it, then link it), looking first at
-`ingredient.nameNormalized` and then at `ingredientAlias.alias`. All of it runs
-in **one transaction**: a failure halfway through must leave nothing behind.
+### `POST /recipes`: one request, one transaction
 
-There is deliberately no endpoint for managing aliases in V1. The table is read
-by the lookup but filled by hand through `prisma studio` — aliases are rare
-exceptions until the V3 importer starts producing them.
+`POST /recipes` receives the recipe and its ingredient list in a single request.
+Ingredients are referenced by name, never by id. For each line the service
+normalizes the name and `upsert`s on `ingredient.nameNormalized`: an existing
+ingredient is linked, a new one is created first. A name that appears twice in
+one request — `"Salz"` for the soup and `" salz "` to taste — is looked up once;
+the ids are kept in a `Map` keyed by the normalized name, so both lines point at
+the same ingredient. `position` is taken from the index in the incoming list,
+starting at 1.
+
+All of it runs in **one transaction**. The ingredients are written first, the
+recipe and its join rows last, so the case that matters is a failure in between:
+a dropped connection or a restart must not leave a freshly created ingredient
+behind without a recipe. Every call inside the `$transaction` callback goes
+through `transactionClient`. A single `this.prisma.` call in there would run on
+a different connection, commit on its own and survive the rollback — and every
+successful request would look exactly the same, which is why it has to be
+tested with a failure.
+
+That test was done by hand: with a temporary `throw` between the ingredient loop
+and `recipe.create`, a request containing a new ingredient answers `500` and
+leaves neither the ingredient nor the recipe in the database. Nest answers a
+plain `Error` with a generic `Internal server error` on purpose, since its
+message may contain internals; the message and stack trace appear only in the
+server log.
+
+On success the response is `201` with the same shape as `GET /recipes/:id`. The
+mapper runs after the commit, outside the transaction.
+
+**Aliases are not consulted yet.** `create()` looks at `nameNormalized` only, so
+a name that exists solely as an `ingredientAlias.alias` becomes a new
+ingredient. There is deliberately no endpoint for managing aliases in V1 either:
+the table is meant to be filled by hand through `prisma studio`, and aliases are
+rare exceptions until the V3 importer starts producing them.
 
 ### Duplicates: let the constraint decide
 

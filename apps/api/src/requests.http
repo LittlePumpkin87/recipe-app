@@ -44,3 +44,19 @@ POST {{host}}/ingredients
 Content-Type: application/json
 
 { "name": "Lauch", "id": "abc" }
+
+### post recipe
+POST {{host}}/recipes
+Content-Type: application/json
+
+{
+  "title": "Kartoffelsuppe",
+  "instructions": "Kartoffeln schälen …",
+  "sourceUrl": "https://…",
+  "ingredients": [
+    { "name": "Kartoffeln", "amount": 800, "unit": "GRAM" },
+    { "name": "Mehl", "amount": 1, "unit": "EL", "note": "zum Binden" },
+    { "name": "Salz", "amount": 1, "unit": "TEASPOON" },
+    { "name": " salz ", "note": "nach Geschmack" }
+  ]
+}
