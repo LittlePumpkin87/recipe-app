@@ -1,15 +1,33 @@
 @host = http://localhost:3000
 
-### Standard-Endpunkt
+### Standard-Endpunkt -> 200
 GET {{host}}/
 
-### Rezepte
+
+### ───────────── GET /recipes ─────────────
+
+### Alle Rezepte, nach Titel sortiert -> 200
 GET {{host}}/recipes
 
-### Zutaten
-GET {{host}}/ingredients
+### Suche, Teilwort am Anfang: findet Langos -> 200
+GET {{host}}/recipes?search=lang
 
-### Einzelnes Rezept — id aus der Liste einsetzen
+### Suche, Großschreibung egal: findet Langos -> 200
+GET {{host}}/recipes?search=LANGOS
+
+### Suche, Teilwort in der Mitte: findet Römertopfbrot -> 200
+GET {{host}}/recipes?search=brot
+
+### Suche ohne Treffer -> 200 mit []
+GET {{host}}/recipes?search=xyz
+
+### Leerer Suchbegriff: liefert alle Rezepte -> 200
+GET {{host}}/recipes?search=
+
+
+### ───────────── GET /recipes/:id ─────────────
+
+### Einzelnes Rezept inkl. Zutaten — id aus der Liste einsetzen -> 200
 GET {{host}}/recipes/01a05dfb-c62a-7443-9462-215ebebaf729
 
 ### Unbekannte, aber gültige UUID -> 404
@@ -18,45 +36,88 @@ GET {{host}}/recipes/01a05dfb-c62a-7443-9462-215ebebaf724
 ### Keine UUID -> 400
 GET {{host}}/recipes/hallo
 
-### search request
-GET {{host}}/recipes?search=lang
 
-### search request
-GET {{host}}/recipes?search=LANGOS
+### ───────────── POST /recipes ─────────────
 
-### search request
-GET {{host}}/recipes?search=brot
-
-### search request
-GET {{host}}/recipes?search=xyz
-
-### search request
-GET {{host}}/recipes?search=
-
-### post ingredient
-POST {{host}}/ingredients
-Content-Type: application/json
-
-{ "name": "Paprika", "defaultUnit": "PIECE" }
-
-### post ingredient
-POST {{host}}/ingredients
-Content-Type: application/json
-
-{ "name": "Lauch", "id": "abc" }
-
-### post recipe
+### Rezept anlegen -> 201 (zweimal senden: "Kartoffeln" bleibt eine Zutat, Position 3 und 4 zeigen beide auf Salz)
 POST {{host}}/recipes
 Content-Type: application/json
 
 {
   "title": "Kartoffelsuppe",
   "instructions": "Kartoffeln schälen …",
-  "sourceUrl": "https://…",
   "ingredients": [
     { "name": "Kartoffeln", "amount": 800, "unit": "GRAM" },
-    { "name": "Mehl", "amount": 1, "unit": "EL", "note": "zum Binden" },
+    { "name": "Mehl", "amount": 1, "unit": "TABLESPOON", "note": "zum Binden" },
     { "name": "Salz", "amount": 1, "unit": "TEASPOON" },
     { "name": " salz ", "note": "nach Geschmack" }
   ]
 }
+
+### Leere Zutatenliste -> 400 (@ArrayNotEmpty)
+POST {{host}}/recipes
+Content-Type: application/json
+
+{
+  "title": "Kartoffelsuppe",
+  "instructions": "Kartoffeln schälen …",
+  "ingredients": []
+}
+
+### Zutatenzeile ohne Namen -> 400 (Meldung nennt ingredients.0.name)
+POST {{host}}/recipes
+Content-Type: application/json
+
+{
+  "title": "Kartoffelsuppe",
+  "instructions": "Kartoffeln schälen …",
+  "ingredients": [
+    { "amount": 800, "unit": "GRAM" }
+  ]
+}
+
+### Unbekanntes Feld sourceUrl -> 400 (forbidNonWhitelisted)
+POST {{host}}/recipes
+Content-Type: application/json
+
+{
+  "title": "Kartoffelsuppe",
+  "instructions": "Kartoffeln schälen …",
+  "sourceUrl": "https://example.org/kartoffelsuppe",
+  "ingredients": [
+    { "name": "Kartoffeln", "amount": 800, "unit": "GRAM" }
+  ]
+}
+
+### Einheit nicht im Enum -> 400 (@IsEnum, Meldung nennt ingredients.0.unit)
+POST {{host}}/recipes
+Content-Type: application/json
+
+{
+  "title": "Kartoffelsuppe",
+  "instructions": "Kartoffeln schälen …",
+  "ingredients": [
+    { "name": "Mehl", "amount": 1, "unit": "EL" }
+  ]
+}
+
+
+### ───────────── /ingredients ─────────────
+
+### Alle Zutaten (max. 20) -> 200
+GET {{host}}/ingredients
+
+### Suche über nameNormalized, Großschreibung egal: findet Salz -> 200
+GET {{host}}/ingredients?search=SALZ
+
+### Zutat anlegen -> 201 (beim zweiten Senden 409)
+POST {{host}}/ingredients
+Content-Type: application/json
+
+{ "name": "Paprika", "defaultUnit": "PIECE" }
+
+### Unbekanntes Feld id -> 400 (forbidNonWhitelisted)
+POST {{host}}/ingredients
+Content-Type: application/json
+
+{ "name": "Lauch", "id": "abc" }
