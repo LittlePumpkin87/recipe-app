@@ -28,13 +28,14 @@ Under development. See [Roadmap](#roadmap) for what is and is not implemented.
 
 ## Tech stack
 
-| Layer      | Choice                         |
-| ---------- | ------------------------------ |
-| Backend    | NestJS, TypeScript             |
-| ORM        | Prisma                         |
-| Database   | PostgreSQL 18                  |
-| Frontend   | Angular, standalone components |
-| Runtime    | Docker Compose                 |
+| Layer          | Choice                                         |
+| -------------- | ---------------------------------------------- |
+| Backend        | NestJS, TypeScript                             |
+| ORM            | Prisma                                         |
+| Second backend | ASP.NET Core, C#, EF Core — planned, see below |
+| Database       | PostgreSQL 18                                  |
+| Frontend       | Angular, standalone components                 |
+| Runtime        | Docker Compose                                 |
 
 ## Requirements
 
@@ -630,6 +631,55 @@ title, mobile friendly, WCAG AA.
 **V3** — recipe import from URLs via schema.org metadata.
 
 **V4** — multi-user operation. Designed, deliberately not built. See below.
+
+**Build order within V1.** The API gets a second implementation before the
+application gets a frontend: the NestJS API is finished first, then rebuilt in
+ASP.NET Core, then the Angular frontend follows, and finally Docker Compose and
+a CI pipeline that builds both backends and runs the same requests against each.
+See [Second backend: ASP.NET Core](#second-backend-aspnet-core).
+
+### Second backend: ASP.NET Core
+
+The V1 API will be implemented a second time, in C# with ASP.NET Core and Entity
+Framework Core. Both are learning goals of this project next to NestJS, and the
+project already holds everything a second backend needs: a finished API to match
+and a database to talk to.
+
+It works because the frontend only knows URLs and JSON. Both backends serve the
+same endpoints with the same request and response shapes, against the same
+PostgreSQL database. Only one of them runs at a time; `requests.http` tests
+either one by pointing `@host` at the other port.
+
+The order is deliberate. The NestJS API for V1 is completed first, so the .NET
+version has a working reference for every endpoint and only the framework is
+new. The Angular frontend comes after both backends because it is the part of
+the stack that is already familiar.
+
+**Prisma owns the schema.** EF Core has a migration system of its own, and two
+migration histories changing one database contradict each other. The .NET
+backend therefore reads the existing tables — database first, via
+`dotnet ef dbcontext scaffold` — and never creates a migration. Every schema
+change still starts in `schema.prisma`.
+
+Three things the two backends have to agree on without the database enforcing
+them:
+
+- **`updatedAt`.** `@updatedAt` is Prisma client behaviour, not a database
+  default (see [Prisma Studio](#prisma-studio)). EF Core knows nothing about it,
+  so the .NET backend has to set `updated_at` on every update itself, or edited
+  recipes keep their creation timestamp.
+- **Name normalization.** The rule that `normalizeIngredientName` exists in
+  exactly one place cannot hold across two languages. A C# version that skipped
+  NFC would let an existing ingredient in a second time, as a row the unique
+  index does not recognise as a duplicate. Whether the folding moves into the
+  database — for example a generated column built from Postgres's own string
+  functions — or stays in code, backed by shared test cases, is decided before
+  the .NET work starts.
+- **The `unit` enum and UUID v7.** Npgsql, the .NET driver for PostgreSQL, has
+  to be told explicitly about the Postgres enum type `unit`, and EF Core has to
+  leave `id` to the database the way Prisma does.
+
+Whether both backends are carried on into V2 is open.
 
 ### Shipped starter recipes
 
