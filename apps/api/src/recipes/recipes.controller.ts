@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { RecipesService } from './recipes.service';
 import { CreateRecipeDto, RecipeDetailDto, RecipeListItemDto } from './dto/recipe.dto';
 
@@ -24,5 +24,11 @@ export class RecipesController {
   @Post()
   create(@Body() dto: CreateRecipeDto): Promise<RecipeDetailDto> {
     return this.recipesService.create(dto);
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  remove(@Param('id', new ParseUUIDPipe({ version: '7'})) id: string) {
+    return this.recipesService.remove(id);
   }
 }

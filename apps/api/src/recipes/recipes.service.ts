@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { recipeIngredientInclude, recipeListSelect, toRecipeDetail, toRecipeListItem } from './recipes.mapper';
 import { RecipeListItemDto, RecipeDetailDto, CreateRecipeDto } from './dto/recipe.dto';
 import { normalizeIngredientName } from '../common/normalize-name';
+import { Prisma } from '../generated/prisma/client';
 
 /** Business logic for recipes, and the only place a database query for them
 may live. The two read paths fetch deliberately different shapes: the list
@@ -84,5 +85,20 @@ export class RecipesService {
     });
 
     return toRecipeDetail(recipe);
+  }
+
+  /** Deletes without looking first: a missing row surfaces as P2025 and becomes
+  a 404. The join rows go with the recipe through `ON DELETE CASCADE`, inside
+  the same statement, which is why no transaction is needed here; the
+  ingredients themselves stay. */
+  async remove(id: string): Promise<void> {
+    try {
+      await this.prisma.recipe.delete({ where: { id } });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+        throw new NotFoundException(`No recipe found with id ${id}`)
+      }
+      throw error;
+    }
   }
 }

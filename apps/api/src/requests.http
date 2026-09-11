@@ -102,6 +102,18 @@ Content-Type: application/json
 }
 
 
+### ───────────── DELETE /recipes/:id ─────────────
+
+### Rezept löschen — id aus der POST-Antwort einsetzen -> 204 ohne Body (zweimal senden: beim zweiten Mal 404)
+DELETE {{host}}/recipes/01a05dfb-c62a-7443-9462-215ebebaf729
+
+### Unbekannte, aber gültige UUID -> 404
+DELETE {{host}}/recipes/01a05dfb-c62a-7443-9462-215ebebaf724
+
+### Keine UUID -> 400
+DELETE {{host}}/recipes/hallo
+
+
 ### ───────────── /ingredients ─────────────
 
 ### Alle Zutaten (max. 20) -> 200

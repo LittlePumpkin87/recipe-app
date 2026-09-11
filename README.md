@@ -9,16 +9,21 @@ and is already designed — see [Multi-user (V4)](#multi-user-v4).
 
 ## Why this exists
 
-Three apps' worth of features, without the three apps:
+Four apps' worth of features, without the four apps:
 
 - a recipe book and a weekly meal plan, like Chefkoch
 - a shopping list built from that plan, like Bring!
 - random suggestions for when nothing comes to mind, like HelloFresh — minus
   the subscription box
+- calories and macros per serving, and what the planned week adds up to, like
+  Lifesum — without logging every meal by hand
 
-None of the three is new on its own. The point is that they stop being separate:
-the plan is built from your own recipes, and the shopping list is built from the
-plan.
+None of the four is new on its own. The point is that they stop being separate:
+the plan is built from your own recipes, the shopping list is built from the
+plan, and the nutrition figures come from the same recipes the plan is made of.
+Because the plan already knows what is for dinner, the planned meals need no
+logging. It is not a full food diary — a snack outside the plan is not counted —
+but it answers the question most weeks actually pose.
 
 Free, ad-free, no account required, running on hardware you own.
 
@@ -482,7 +487,7 @@ V1 only. There is no login, and no endpoint is authenticated.
 | GET | `/recipes/:id` | Single recipe including its ingredients | built |
 | POST | `/recipes` | Create, including the ingredient list | built |
 | PATCH | `/recipes/:id` | Update | planned |
-| DELETE | `/recipes/:id` | Delete | planned |
+| DELETE | `/recipes/:id` | Delete, `204` without a body | built |
 | GET | `/ingredients` | Autocomplete, `?search=`, capped at 20 results | built |
 | POST | `/ingredients` | Create an ingredient, 409 if the name exists | built |
 
@@ -546,6 +551,21 @@ a name that exists solely as an `ingredientAlias.alias` becomes a new
 ingredient. There is deliberately no endpoint for managing aliases in V1 either:
 the table is meant to be filled by hand through `prisma studio`, and aliases are
 rare exceptions until the V3 importer starts producing them.
+
+### `DELETE /recipes/:id`: one statement, no transaction
+
+Deleting a recipe touches two tables and still needs no transaction. The foreign
+key from `recipe_ingredient` to `recipe` is declared `ON DELETE CASCADE`, so
+Postgres removes the join rows as part of the same `DELETE` statement, and a
+single statement is always all or nothing. `POST /recipes` needs `$transaction`
+because it sends several statements in a row; this endpoint sends one. The
+ingredients themselves stay — the cascade only runs from a recipe to its lines.
+
+The service deletes without looking first, for the same reason `POST
+/ingredients` inserts without looking first: a missing row surfaces as Prisma
+error `P2025` and becomes a `404`. A successful delete answers `204 No Content`,
+since the client already knows which recipe it removed. A second `DELETE` on the
+same id answers `404`.
 
 ### Duplicates: let the constraint decide
 
@@ -661,6 +681,9 @@ title, mobile friendly, WCAG AA.
 
 **V4** — multi-user operation. Designed, deliberately not built. See below.
 
+**Later** — tags (vegetarian, quick, oven dish) and nutrition figures, both
+usable as filters for the random suggestions. See [Nutrition](#nutrition).
+
 **Build order within V1.** The API gets a second implementation before the
 application gets a frontend: the NestJS API is finished first, then rebuilt in
 ASP.NET Core, then the Angular frontend follows, and finally Docker Compose and
@@ -709,6 +732,47 @@ them:
   leave `id` to the database the way Prisma does.
 
 Whether both backends are carried on into V2 is open.
+
+### Nutrition
+
+Nutrition figures are planned in two stages. Neither is scheduled yet, and both
+are out of scope for V1.
+
+**Stage 1: figures on the recipe.** `Recipe` gains columns for calories and the
+three macronutrients — protein, carbohydrates and fat — per serving, entered by
+hand or taken over by the V3 importer. schema.org's `Recipe` type carries a
+`nutrition` object with `calories`, `proteinContent`, `carbohydrateContent` and
+`fatContent`, and many recipe sites fill it. Whether the remaining values of the
+EU nutrition label follow — saturated fat, sugar and salt, plus fibre — is
+decided when stage 1 is built; schema.org has fields for all of them. Sorting ("under
+600 kcal, most protein first") and restricting the random suggestions are then
+an ordinary `where` and `orderBy`. Combined with the V2 meal plan and the
+servings chosen there, the week's total follows by multiplication.
+
+**Stage 2: figures calculated from the ingredients**, the way calorie trackers
+such as Lifesum or Yazio work. Every ingredient holds its nutrients per 100 g,
+plus a gram weight per unit that is specific to that ingredient: a tablespoon
+of flour weighs about 10 g, a tablespoon of oil about 14 g, a clove of garlic
+about 4 g. `2 TABLESPOON` of flour then becomes 20 g, and 20 % of the per-100 g
+values.
+
+That is a deliberate, narrow exception to "no conversion anywhere": the gram
+weights feed the nutrition estimate only, never the shopping list, which keeps
+adding up identical units only. A line without an amount ("salt to taste") or
+without a gram weight for its unit marks the recipe's figure as *incomplete*
+instead of silently counting as zero, and a hand-entered stage-1 value applies
+wherever no calculated one is possible.
+
+The code is small; the data is not. Candidate sources are USDA FoodData Central
+(public domain, US foods, English), Open Food Facts (ODbL, a share-alike licence
+for databases; strong on packaged products, weak on raw ingredients) and the
+German Bundeslebensmittelschlüssel, whose licence terms have to be checked
+first. As with [Shipped starter recipes](#shipped-starter-recipes), no external
+data enters the repository before its licence is clear.
+
+Nutrition never lives on a `RecipeIngredient` row — stage 1 puts it on the
+recipe, stage 2 on the ingredient. That keeps the join rows free to be replaced
+wholesale when a recipe is edited.
 
 ### Shipped starter recipes
 
@@ -805,7 +869,9 @@ publish.
 Finally, the part that is not code: real accounts mean personal data, so an
 imprint, a privacy policy and a deletion process are required, on top of
 operating the service, taking backups and applying security updates
-indefinitely for other people. The 2 GB Synology is not the machine for that.
+indefinitely for other people. Once nutrition figures exist, what a named person
+eats week by week may count as health data under Art. 9 GDPR, which raises the
+bar further. The 2 GB Synology is not the machine for that.
 
 ## License
 
