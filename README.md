@@ -779,7 +779,8 @@ title, mobile friendly, WCAG AA.
 **V4** — multi-user operation. Designed, deliberately not built. See below.
 
 **Later** — tags (vegetarian, quick, oven dish) and nutrition figures, both
-usable as filters for the random suggestions. See [Nutrition](#nutrition).
+usable as filters for the random suggestions. See [Nutrition](#nutrition). A
+photo per recipe, see [Recipe images](#recipe-images).
 
 **Build order within V1.** The API gets a second implementation before the
 application gets a frontend: the NestJS API is finished first, then rebuilt in
@@ -879,6 +880,31 @@ data enters the repository before its licence is clear.
 Nutrition never lives on a `RecipeIngredient` row — stage 1 puts it on the
 recipe, stage 2 on the ingredient. That keeps the join rows free to be replaced
 wholesale when a recipe is edited.
+
+### Recipe images
+
+A photo per recipe is planned but not scheduled yet. The decisions that shape
+it:
+
+- **Files, not database rows.** The image lives as a file in a Docker volume;
+  the recipe stores only its name. A backup then has to cover both the database
+  and that volume.
+- **What is accepted.** A size limit, and only JPEG, PNG and WebP — checked by
+  the file's content, not its extension. SVG is excluded because it can carry
+  scripts.
+- **Location data is stripped.** Phone photos carry GPS coordinates in their
+  EXIF metadata; left in, every recipe photo records where the kitchen is. This
+  matters at the latest with V4, when strangers can see recipes.
+- **Resized on upload.** A phone photo is 4–8 MB, the recipe list needs a few
+  hundred KB. Resizing costs memory, which is scarce on the NAS and on a
+  Raspberry Pi.
+- **Imported images.** schema.org recipes carry an image URL. Hot-linking it
+  would break the rule that nothing is loaded from elsewhere at runtime, so an
+  imported image is either downloaded once or not shown — decided with V3. Its
+  copyright stays with the source, one more reason imported recipes never become
+  public (see [Multi-user (V4)](#multi-user-v4)).
+- **Uploads go through `multer`.** The patched version is forced by an override;
+  see [Known audit findings](#known-audit-findings).
 
 ### Shipped starter recipes
 
@@ -1006,6 +1032,66 @@ controlled. The finding is accepted until Prisma raises the dependency.
 Do **not** run `npm audit fix --force` here: it "resolves" the report by
 downgrading `prisma` to 6.12.0, which would break the version parity between
 `prisma` and `@prisma/client` that Prisma requires.
+
+### `multer`: overridden
+
+`@nestjs/platform-express` 12.0.1 pins `multer` to exactly `2.2.0`, which has
+four advisories — denial of service through crafted field names and aborted
+uploads, and a bypass of the file size limit — all fixed in `2.3.0`. The root
+`package.json` therefore forces the patched version:
+
+```json
+"overrides": { "multer": "2.3.0" }
+```
+
+An override tells npm to install that version no matter what a dependency asks
+for; in a workspaces monorepo npm reads overrides from the root `package.json`
+only. `multer` handles `multipart/form-data` and runs only on routes that use
+Nest's `FileInterceptor`. There are none yet, so the vulnerable code is not
+reachable today — but [recipe images](#recipe-images) are planned, and an upload
+endpoint would reach it directly. Remove the override once
+`@nestjs/platform-express` itself depends on `2.3.0` or later.
+
+`npm ls multer` reports the result as `multer@2.3.0 invalid: "2.2.0" from
+node_modules/@nestjs/platform-express` and exits with code 1. That is `npm ls`
+comparing the installed version against the parent's exact pin without taking
+the override into account — the nested form
+`"@nestjs/platform-express": { "multer": "2.3.0" }` gives the same verdict. The
+install itself is correct: `npm ci`, which CI and Docker builds use, accepts the
+lockfile and installs `2.3.0`. Do not use `npm ls` as a pass/fail check in a
+pipeline while the override is in place.
+
+**npm applies an override only when it resolves a package anew.** With `multer`
+already recorded in `package-lock.json`, `npm install` answered "up to date",
+`npm update` moved 94 other packages and still kept `2.2.0`, and reinstalling
+`@nestjs/platform-express` changed nothing. Deleting the `multer` entry from the
+lockfile by hand is worse: npm then installs no `multer` at all, because it
+trusts the rest of the file. What works is regenerating the lockfile:
+
+```bash
+rm package-lock.json && npm install
+```
+
+That also moves every other package to the newest version its range allows —
+here 95 packages, none across a major version — so run the API, the lint and the
+requests afterwards.
+
+### `qs`: updated
+
+`qs` parses URL-encoded request bodies, and Nest registers that parser for every
+request, so this finding was reachable. Every package using it — `express`,
+`body-parser`, `superagent` — accepts any `6.x` above a minimum, so
+`npm update qs` moved the lockfile to the fixed `6.16.0` without touching a
+`package.json`.
+
+### `mysql2`: accepted
+
+`prisma` — the CLI, a devDependency — pins `mysql2` to `3.15.3`, which has two
+advisories concerning connections to a MySQL server. Prisma loads that driver
+only for a MySQL datasource; this project uses PostgreSQL, and the CLI never
+ships with the application. The finding is dismissed in Dependabot as
+"vulnerable code is not actually used". `npm audit fix --force` would "resolve"
+it by downgrading `prisma` to 6.19.3.
 
 ### Reading audit output in this repo
 

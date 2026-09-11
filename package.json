@@ -4,5 +4,8 @@
     "license": "AGPL-3.0-only",
     "workspaces": [
         "apps/*"
-    ]
+    ],
+    "overrides": {
+        "multer": "2.3.0"
+    }
 }
