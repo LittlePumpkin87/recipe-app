@@ -432,8 +432,11 @@ URL importer — see [Shipped starter recipes](#shipped-starter-recipes).
 The seed is also the rehearsal for `POST /recipes`: normalise the name, `upsert`
 on `nameNormalized`, keep the returned ids in a `Map`, then write the recipes
 and their join rows — all inside one `$transaction`. Every call within that
-block goes through the transaction client `tx`, never through `prisma`, or it
-runs outside the transaction and is not rolled back with it.
+block goes through `transactionClient`, never through `prisma`, or it runs
+outside the transaction and is not rolled back with it. The name is longer than
+the usual `tx` on purpose: it is Prisma's own type name
+(`Prisma.TransactionClient`), and it makes a stray `prisma.` call inside the
+block stand out.
 
 **`prisma format` completes as well as formats.** Given half a relation it will
 add the missing opposite field, move `@relation` to the side holding the foreign

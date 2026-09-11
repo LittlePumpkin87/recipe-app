@@ -39,9 +39,9 @@ export class RecipesService {
   }
 
 
-  /** Every write goes through `transactionClient`, so a failure anywhere rolls back the
-  ingredients created along the way as well. Ingredients are resolved by
-  normalized name before the recipe is written; a name that appears twice in
+  /** Every write goes through `transactionClient`, so a failure anywhere rolls
+  back the ingredients created along the way as well. Ingredients are resolved
+  by normalized name before the recipe is written; a name that appears twice in
   the list is looked up once. The mapper runs only after the commit. */
   async create(dto: CreateRecipeDto): Promise<RecipeDetailDto> {
     const recipe = await this.prisma.$transaction(async (transactionClient) => {
