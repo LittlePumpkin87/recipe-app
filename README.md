@@ -45,6 +45,7 @@ Under development. See [Roadmap](#roadmap) for what is and is not implemented.
 ## Requirements
 
 - Node.js 24 (see `.nvmrc`)
+- .NET SDK 10 (see `global.json`) — only for the second backend
 - Docker with Compose v2
 - Optionally a PostgreSQL client (`postgresql-client`, DBeaver, pgAdmin) to
   connect to the database from the host
@@ -95,6 +96,29 @@ Verify that the database is up:
 docker compose ps          # db should report "healthy"
 ```
 
+### Running the .NET backend instead
+
+The second backend serves the same endpoints from the same database. Only one of
+them runs at a time. Steps 1 to 5 above still apply — the database and its tables
+are shared, and Prisma owns the schema either way.
+
+```bash
+dotnet run --project apps/api-dotnet
+```
+
+It listens on http://localhost:5000, so it does not collide with the NestJS API
+on port 3000. To point `requests.http` at it, change `@host` to that port.
+
+The port lives in `apps/api-dotnet/Properties/launchSettings.json`. That file is
+read by `dotnet run` only — a container ignores it and takes `ASPNETCORE_URLS`
+instead.
+
+**Editor support.** The Microsoft C# extension is not available on Open VSX,
+because its licence restricts it to official Visual Studio Code builds. VSCodium
+users need an alternative; this project uses
+[DotRush](https://open-vsx.org/extension/nromanov/dotrush) (`nromanov.dotrush`),
+which brings its own Roslyn-based language server.
+
 ### A note on the password
 
 `DATABASE_URL` is a URI, in which `:`, `@`, `/`, `?` and `#` carry structural
@@ -113,16 +137,21 @@ This is an npm workspaces monorepo. Application packages live under `apps/`.
 ```
 .
 ├── apps/
-│   └── api/                # NestJS backend (workspace name: "api")
-│       ├── prisma/         # schema, migrations and seed.ts
-│       ├── requests.http   # example requests for the VS Code REST Client
-│       └── src/
-│           ├── common/             # helpers shared by seed and services
-│           ├── generated/prisma/   # Prisma client — generated, never edited
-│           ├── prisma/             # PrismaService, global
-│           ├── recipes/            # feature module
-│           └── ingredients/        # feature module
+│   ├── api/                # NestJS backend (workspace name: "api")
+│   │   ├── prisma/         # schema, migrations and seed.ts
+│   │   ├── requests.http   # example requests for the VS Code REST Client
+│   │   └── src/
+│   │       ├── common/             # helpers shared by seed and services
+│   │       ├── generated/prisma/   # Prisma client — generated, never edited
+│   │       ├── prisma/             # PrismaService, global
+│   │       ├── recipes/            # feature module
+│   │       └── ingredients/        # feature module
+│   └── api-dotnet/         # ASP.NET Core backend (project: RecipeApi)
+│       ├── Controllers/    # attribute-routed controllers
+│       ├── Utility/        # UrlExtensions: DATABASE_URL → Npgsql
+│       └── Properties/     # launchSettings.json — local ports only
 ├── docker-compose.yml      # local infrastructure
+├── global.json             # pins the .NET SDK version
 ├── .env                    # local secrets — never committed
 └── .env.example            # template for .env
 ```
@@ -613,6 +642,12 @@ is unlinked, not deleted; it stays in `ingredient` for other recipes.
 would look untouched. This was found by comparing `updated_at` in psql before
 and after such a request.
 
+That assignment is on its way out. The decision of 15 September 2026 moves
+`updated_at` into the database as two triggers, the second of which covers
+exactly this case — an ingredient-only edit — by touching the parent recipe. The
+explicit assignment is what keeps the timestamp honest until that migration is
+written. See [Second backend: ASP.NET Core](#second-backend-aspnet-core).
+
 Replacing gives the join rows new ids on every edit. That is harmless as long as
 nothing points at a single row: the meal plan will point at recipes, the
 shopping list at ingredients, nutrition figures at either. Should that change,
@@ -811,32 +846,98 @@ backend therefore reads the existing tables — database first, via
 `dotnet ef dbcontext scaffold` — and never creates a migration. Every schema
 change still starts in `schema.prisma`.
 
-Three things the two backends have to agree on without the database enforcing
-them:
+Three things the two backends have to agree on that the database does not
+enforce today. Two of them were settled on 15 September 2026, before the .NET
+work started; neither is built yet.
 
-- **`updatedAt`.** `@updatedAt` is Prisma client behaviour, not a database
-  default (see [Prisma Studio](#prisma-studio)). EF Core knows nothing about it,
-  so the .NET backend has to set `updated_at` on every update itself, or edited
-  recipes keep their creation timestamp. The NestJS backend already had to
-  learn this once: an update carrying only the ingredient list skipped the
-  recipe's `UPDATE` entirely (see the PATCH section). A Postgres trigger that
-  sets `updated_at` on every `UPDATE` would move the rule into the database for
-  both backends; it is decided together with the normalization question.
-- **Name normalization.** The rule that `normalizeIngredientName` exists in
-  exactly one place cannot hold across two languages. A C# version that skipped
-  NFC would let an existing ingredient in a second time, as a row the unique
-  index does not recognise as a duplicate. Whether the folding moves into the
-  database — for example a generated column built from Postgres's own string
-  functions — or stays in code, backed by shared test cases, is decided before
-  the .NET work starts.
+- **`updatedAt` — decided: two database triggers.** `@updatedAt` is Prisma
+  client behaviour, not a database default (see
+  [Prisma Studio](#prisma-studio)). EF Core knows nothing about it, so a second
+  backend would have to carry the same rule a second time, and edited recipes
+  would otherwise keep their creation timestamp. The rule moves into the
+  database instead: a `BEFORE UPDATE` trigger on `recipe` sets
+  `NEW.updated_at = now()`, and an `AFTER INSERT/UPDATE/DELETE` trigger on
+  `recipe_ingredient` sets the column on the parent recipe. The second trigger
+  is what makes the rule complete. An update carrying only the ingredient list
+  sends no `UPDATE` for the recipe at all, so a trigger on `recipe` alone would
+  miss exactly the case that prompted the question (see the PATCH section).
+  A trigger cannot be expressed in `schema.prisma`; it arrives as hand-written
+  SQL in a migration created with `--create-only`. Until then both backends
+  keep setting the column themselves.
+- **Name normalization — decided: one implementation per language, one shared
+  set of test cases.** The rule that `normalizeIngredientName` exists in exactly
+  one place cannot hold across two languages. A C# version that skipped NFC
+  would let an existing ingredient in a second time, as a row the unique index
+  does not recognise as a duplicate. A generated column in Postgres was the
+  alternative and was rejected: normalization runs on the read side as well —
+  the search term in `IngredientsService.findAll` has to pass through the same
+  function before it can match `name_normalized` — so C# needs its own
+  implementation either way, and the column would have removed only half of the
+  duplication. It would also have been the harder half to verify: Prisma cannot
+  express a generated column, and `nameNormalized` is written explicitly in
+  every `create` and `upsert`.
 - **The `unit` enum and UUID v7.** Npgsql, the .NET driver for PostgreSQL, has
   to be told explicitly about the Postgres enum type `unit`, and EF Core has to
   leave `id` to the database the way Prisma does.
+
+**The shared normalization test cases.** Both implementations apply the same
+steps in the same order — NFC, runs of whitespace to a single space, trim,
+lowercase — and both have to produce these results:
+
+| Input | Expected | Guards against |
+|---|---|---|
+| `"ZWIEBEL"` | `zwiebel` | case |
+| `"  Zwiebel  "` | `zwiebel` | surrounding whitespace |
+| `"Crème  fraîche"` | `crème fraîche` | repeated whitespace |
+| `"Frühlingszwiebel"` with a decomposed `ü` (`u` + U+0308) | same result as the composed spelling | missing NFC |
+| `"Öl"` | `öl` | lowercasing beyond ASCII |
+
+The NFC case is the only one that is invisible on screen: an editor draws both
+spellings identically, but one string is a character longer than the other. That
+is precisely why it belongs in the list — and why the same cases will run
+against both backends in the CI pipeline.
 
 Timestamps were a fourth such point and were settled in the database before the
 .NET work began: `created_at` and `updated_at` are `timestamptz`, which Npgsql
 maps to a `DateTime` of kind `Utc`. With plain `timestamp` columns it would have
 refused to write a UTC `DateTime` at all. See [Timestamps](#timestamps).
+
+**One `DATABASE_URL`, two spellings.** Both backends read the same variable from
+the same `.env`, but they do not accept the same format. Prisma expects the URI
+form, `postgresql://user:password@host:port/database`. Npgsql expects semicolon-
+separated pairs, `Host=…;Username=…`, and has never supported URIs
+([npgsql#2090](https://github.com/npgsql/npgsql/issues/2090), open since 2018).
+
+Rather than keeping the same secret twice in two spellings, the .NET backend
+translates at startup. `AddDatabaseConnection` in
+`apps/api-dotnet/Utility/UrlExtensions.cs` is an extension method on
+`WebApplicationBuilder` and handles three cases in order:
+
+1. `ConnectionStrings:Default` is already set — do nothing. This is what lets
+   Compose supply the connection directly as `ConnectionStrings__Default` later,
+   without the translation getting in the way.
+2. Neither that nor `DATABASE_URL` is set — throw, so startup fails immediately
+   and with a readable message instead of at the first query.
+3. Otherwise split the URI with `System.Uri`, rebuild it with
+   `NpgsqlConnectionStringBuilder`, and store the result under
+   `ConnectionStrings:Default`, where EF Core will look for it.
+
+Three details in that translation are easy to get wrong:
+
+- **`?schema=public` is a Prisma parameter.** Npgsql has no `schema` keyword and
+  rejects the connection string if the query part is carried over. `public` is
+  the default anyway, so the query is dropped.
+- **`UserInfo` is a single string**, `user:password`, split at the *first* colon —
+  a password may contain colons of its own.
+- **A URI without an explicit port yields `-1`**, not the default, so 5432 is
+  filled in by hand.
+
+ASP.NET Core does not read `.env` files at all; that convention comes from Node.
+[DotNetEnv](https://www.nuget.org/packages/DotNetEnv) loads the repository-root
+`.env` into environment variables before `WebApplication.CreateBuilder` builds
+the configuration — `TraversePath()` walks up from the project directory to find
+it, and `NoClobber()` leaves real environment variables untouched, which is what
+a container needs.
 
 Whether both backends are carried on into V2 is open.
 
