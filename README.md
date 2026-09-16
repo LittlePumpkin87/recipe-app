@@ -37,7 +37,7 @@ Under development. See [Roadmap](#roadmap) for what is and is not implemented.
 | -------------- | ---------------------------------------------- |
 | Backend        | NestJS, TypeScript                             |
 | ORM            | Prisma                                         |
-| Second backend | ASP.NET Core, C#, EF Core — planned, see below |
+| Second backend | ASP.NET Core, C#, EF Core — in progress, see below |
 | Database       | PostgreSQL 18                                  |
 | Frontend       | Angular, standalone components                 |
 | Runtime        | Docker Compose                                 |
@@ -148,8 +148,11 @@ This is an npm workspaces monorepo. Application packages live under `apps/`.
 │   │       └── ingredients/        # feature module
 │   └── api-dotnet/         # ASP.NET Core backend (project: RecipeApi)
 │       ├── Controllers/    # attribute-routed controllers
+│       ├── Data/           # RecipeDbContext — scaffolded, plus one partial
+│       ├── Models/         # entity classes — scaffolded, plus the unit enum
 │       ├── Utility/        # UrlExtensions: DATABASE_URL → Npgsql
 │       └── Properties/     # launchSettings.json — local ports only
+├── .config/                # dotnet-tools.json — pins dotnet-ef
 ├── docker-compose.yml      # local infrastructure
 ├── global.json             # pins the .NET SDK version
 ├── .env                    # local secrets — never committed
@@ -939,6 +942,106 @@ the configuration — `TraversePath()` walks up from the project directory to fi
 it, and `NoClobber()` leaves real environment variables untouched, which is what
 a container needs.
 
+#### Reading the schema into EF Core
+
+The model classes and the `DbContext` are generated from the live database, not
+written by hand. The command lives here because it is not a one-off: every
+change to `schema.prisma` is followed by another run.
+
+`dotnet ef` is not part of the SDK. It is registered in
+`.config/dotnet-tools.json`, so a fresh clone needs one restore before the
+command below works:
+
+```bash
+dotnet tool restore
+```
+
+Then, from `apps/api-dotnet`:
+
+```bash
+dotnet ef dbcontext scaffold "Name=ConnectionStrings:Default" \
+  Npgsql.EntityFrameworkCore.PostgreSQL \
+  --context RecipeDbContext \
+  --context-dir Data \
+  --output-dir Models \
+  --no-onconfiguring \
+  --table recipe \
+  --table ingredient \
+  --table ingredient_alias \
+  --table recipe_ingredient \
+  --force
+```
+
+Four of those arguments are not cosmetic.
+
+- **`Name=ConnectionStrings:Default`** resolves through the application's own
+  configuration, which means `AddDatabaseConnection` supplies the connection and
+  the password never reaches the shell history.
+- **`--no-onconfiguring`** suppresses an `OnConfiguring` method that would
+  otherwise be written into the `DbContext` with the connection string — password
+  included — in plain text. The scaffolder prints a warning about it, but by then
+  the file exists.
+- **`--table`**, once per table. Without it the scaffolder also picks up
+  `_prisma_migrations`, Prisma's own bookkeeping, and turns it into a model
+  class. EF Core sees the database, not the intent; naming the four tables keeps
+  the migration history out of a backend that must never write to it.
+- **`--force`** overwrites. It does not tidy up: a file the run no longer
+  produces is simply left behind, so a table dropped from the schema leaves its
+  class on disk until it is deleted by hand.
+
+**The `unit` columns are hand-written.** A PostgreSQL enum has no CLR type to map
+to, so the scaffolder emits `HasPostgresEnum` for the type itself and then skips
+every column using it:
+
+```
+Enum column 'public.ingredient.default_unit' cannot be scaffolded,
+define a CLR enum type and add the property manually.
+```
+
+This is a warning, not an error. The build succeeds and two columns are silently
+absent — which is why it is written down here. Three files supply what the
+scaffolder cannot, and none of them is touched by a later `--force`:
+
+| File | Contains |
+|---|---|
+| `Models/Unit.cs` | the C# enum, one `[PgName]` per value |
+| `Models/UnitProperties.cs` | `Ingredient.DefaultUnit` and `RecipeIngredient.Unit` |
+| `Data/RecipeDbContext.Partial.cs` | `HasColumnName` for both |
+
+The `[PgName]` attributes are required rather than decorative. Npgsql translates
+member names to snake_case by default and would look for `gram`, while the values
+in Postgres are upper case. Spelling each one out also keeps the mapping visible:
+a unit added to `schema.prisma` has to be added here too, and the pairing is
+readable line by line.
+
+`MapEnum` completes the link when the context is registered in `Program.cs`:
+
+```csharp
+builder.Services.AddDbContext<RecipeDbContext>(options =>
+    options.UseNpgsql(
+        builder.Configuration.GetConnectionString("Default"),
+        npgsql => npgsql.MapEnum<Unit>("unit")));
+```
+
+**Generated files are never edited.** Everything hand-written goes into a
+separate file — a `partial class` for the models, and for the context the
+`OnModelCreatingPartial` hook that the scaffolder declares and calls at the end
+of `OnModelCreating` for exactly this purpose. The rule matters more here than in
+a code-first project, because the regeneration is routine rather than rare.
+
+The same reasoning rules out `IEntityTypeConfiguration<T>`, the usual way to
+split a large `OnModelCreating` into one file per entity: the scaffolder does not
+produce it, so it would have to be maintained by hand and rewritten after every
+schema change. With four tables the generated `OnModelCreating` stays readable
+as it is.
+
+**What to check after a run.** The generated configuration should still carry
+`HasDefaultValueSql("uuidv7()")` on every id — that is what makes EF Core omit
+the column on insert and read the value back, leaving id generation to Postgres
+18 the way Prisma does. Timestamps appear as `HasPrecision(3)` with no explicit
+column type, because Npgsql maps `DateTime` to `timestamptz` by default; see
+[Timestamps](#timestamps).
+
 Whether both backends are carried on into V2 is open.
 
 ### Nutrition
@@ -1209,3 +1312,39 @@ If every path runs through a devDependency such as `prisma`, `@nestjs/cli` or
 
 Do not run `npm audit fix --force`: it resolves the report by downgrading
 `@nestjs/mau` to 0.0.6, which is not a fix.
+
+### The same check on the .NET side
+
+NuGet reads the GitHub Advisory Database as npm does, and audits on every
+restore. Two properties in `RecipeApi.csproj` state the intent rather than leave
+it to the SDK default:
+
+```xml
+<NuGetAudit>true</NuGetAudit>
+<NuGetAuditMode>all</NuGetAuditMode>
+```
+
+`all` includes transitive packages; `direct` would only look at the five
+references written in the project file. Both values happen to match the current
+default, which is exactly why they are spelled out — an SDK upgrade cannot
+quietly turn the audit down.
+
+`NuGetAuditLevel` is deliberately absent. Its default is `low`, meaning every
+severity is reported; setting it to `moderate` would hide findings rather than
+add any.
+
+To ask on demand rather than wait for a restore:
+
+```bash
+dotnet list package --vulnerable --include-transitive
+dotnet list package --deprecated
+```
+
+`--include-transitive` is not optional. Without it the command inspects only the
+direct references — the opposite default from `npm audit`, which always walks the
+whole tree.
+
+There is no equivalent of npm's `overrides` here, and none is needed. Within one
+application NuGet resolves a single version per package, and the nearest
+reference wins: naming a patched version directly in `RecipeApi.csproj` overrides
+whatever a dependency asked for.
