@@ -5,6 +5,16 @@ using RecipeApi.Models;
 
 namespace RecipeApi.Services;
 
+/// <summary>
+/// Business logic for recipes, and the only place a database query for them may
+/// live. Both read paths project straight into DTOs instead of loading entities:
+/// in EF Core the projection <i>is</i> the column list, so the overview never
+/// reads <c>instructions</c>, the detail query reaches the ingredient name
+/// through the navigation rather than through <c>Include</c>, and no entity ever
+/// leaves this class. A recipe that does not exist is reported as <c>null</c>
+/// rather than as an exception — ASP.NET Core ships no filter that would turn one
+/// into a 404, so the controller decides what the absence means.
+/// </summary>
 public class RecipeService(RecipeDbContext recipeDb)
 {
     private readonly RecipeDbContext _db = recipeDb;

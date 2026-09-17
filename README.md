@@ -567,17 +567,18 @@ hand and watching the join rows appear is faster feedback than a test run.
 
 ## API endpoints
 
-V1 only. There is no login, and no endpoint is authenticated.
+V1 only. There is no login, and no endpoint is authenticated. Both backends serve
+the same contract; the two columns track how far the second one has got.
 
-| Method | Path | Purpose | Status |
-|---|---|---|---|
-| GET | `/recipes` | List, with optional `?search=` on the title | built |
-| GET | `/recipes/:id` | Single recipe including its ingredients | built |
-| POST | `/recipes` | Create, including the ingredient list | built |
-| PATCH | `/recipes/:id` | Update; a present ingredient list replaces the old one | built |
-| DELETE | `/recipes/:id` | Delete, `204` without a body | built |
-| GET | `/ingredients` | Autocomplete, `?search=`, capped at 20 results | built |
-| POST | `/ingredients` | Create an ingredient, 409 if the name exists | built |
+| Method | Path | Purpose | NestJS | .NET |
+|---|---|---|---|---|
+| GET | `/recipes` | List, with optional `?search=` on the title | built | built |
+| GET | `/recipes/:id` | Single recipe including its ingredients | built | built |
+| POST | `/recipes` | Create, including the ingredient list | built | — |
+| PATCH | `/recipes/:id` | Update; a present ingredient list replaces the old one | built | — |
+| DELETE | `/recipes/:id` | Delete, `204` without a body | built | — |
+| GET | `/ingredients` | Autocomplete, `?search=`, capped at 20 results | built | — |
+| POST | `/ingredients` | Create an ingredient, 409 if the name exists | built | — |
 
 ### How the two searches differ
 
@@ -1076,6 +1077,70 @@ the column on insert and read the value back, leaving id generation to Postgres
 18 the way Prisma does. Timestamps appear as `HasPrecision(3)` with no explicit
 column type, because Npgsql maps `DateTime` to `timestamptz` by default; see
 [Timestamps](#timestamps).
+
+#### The reading endpoints
+
+`GET /recipes` and `GET /recipes/{id}` answer with the same JSON as the NestJS
+versions, but four things had to be arranged differently to get there.
+
+**The projection is the column list.** On the Prisma side, picking columns and
+shaping the response are two separate steps: `select: recipeListSelect` names the
+columns, `toRecipeListItem` builds the object (see
+[DTOs, mappers and validation](#dtos-mappers-and-validation)). EF Core has no
+equivalent of that first step. A mapping function taking a loaded `Recipe` would
+force every column to be read first, `instructions` included — the one thing the
+overview is supposed to avoid. Written into the query instead, as
+`Select(r => new RecipeListItemDto(…))`, the shape *is* the column list and the
+generated SQL reads five columns.
+
+The same holds one level down. `GET /recipes/{id}` needs the ingredient name,
+which lives a table deeper, and the detail query reaches it with
+`i.Ingredient.Name` inside the nested projection rather than with
+`Include`/`ThenInclude`. `Include` loads a related entity in full and is ignored
+inside a projection; the navigation in the `Select` is what makes EF Core write
+the join. Ordering by `position` goes into that inner projection too, where
+Prisma had it on the `include`.
+
+A consequence worth naming: `AsNoTracking()` is absent on purpose. What comes out
+of a projection is not an entity, so the change tracker has nothing to track.
+
+**Two System.Text.Json defaults differ from Nest.** Property names already match
+— camelCase is the default, so `PrepMinutes` serialises as `prepMinutes`. Enums
+do not: by default they are written as **numbers**, which would have put
+`"unit": 6` where Nest writes `"unit": "TABLESPOON"`. `Models/Unit.cs` therefore
+carries `[JsonConverter(typeof(JsonStringEnumConverter))]` on the type and a
+`[JsonStringEnumMemberName]` per value, next to the `[PgName]` attributes that
+were already there. The two look alike and are read by different libraries:
+`PgName` faces the database, `JsonStringEnumMemberName` faces the HTTP client.
+That they carry the same text is a property of the values chosen, not a link
+between the attributes.
+
+`decimal?` needs no such help. `amount` serialises as a number on its own, where
+Prisma's `Decimal` had to be sent through `.toNumber()` to avoid a quoted string.
+
+**400 and 404 are decided by a missing route constraint.** An unknown but valid
+UUID has to answer 404, a path that is not a UUID at all has to answer 400. With
+`[HttpGet("{id:guid}")]` the constraint is checked during routing, `/recipes/x`
+matches no endpoint, and the answer is 404 — wrong for this contract. Without the
+constraint the route matches, model binding fails to parse the segment into a
+`Guid`, and `[ApiController]` turns that into a 400 with `ValidationProblemDetails`.
+NestJS arrives at the same two answers through `ParseUUIDPipe`, which throws
+`BadRequestException`.
+
+The error *body* is not aligned, deliberately. Nest sends
+`{ statusCode, message, error }`, ASP.NET Core sends RFC 9457 `ProblemDetails`.
+The contract between the two backends is the status code; matching the body would
+mean working against the platform for a payload a client does not read. For the
+same reason the UUID *version* is not checked: `ParseUUIDPipe({ version: '7' })`
+rejects a v4 UUID with 400, `Guid` has no such notion, and an unknown v7 UUID
+ends in 404 regardless.
+
+**The service returns `null` rather than throwing.** `RecipesService.findOne`
+throws `NotFoundException`, which is idiomatic in Nest because the framework
+ships an exception filter that turns any `HttpException` into a response. ASP.NET
+Core has no such mapping: an escaping exception is a 500 unless middleware is
+added to translate it. So `GetByIdAsync` returns `RecipeDetailDto?` and the
+controller decides that `null` means `NotFound()`.
 
 Whether both backends are carried on into V2 is open.
 

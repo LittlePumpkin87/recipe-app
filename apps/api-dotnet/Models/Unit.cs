@@ -10,7 +10,15 @@ namespace RecipeApi.Models;
 /// The <c>PgName</c> attributes are not decoration. Npgsql translates member names
 /// to snake_case by default, which would look for <c>gram</c> and find nothing —
 /// the values in Postgres are upper case. Every value is therefore spelled out.
-/// <c>schema.prisma</c> stays the source of truth: a new unit is added there first.
+/// The second set of attributes faces the other direction. System.Text.Json writes
+/// an enum as a <i>number</i> by default, which would put <c>"unit": 6</c> where the
+/// NestJS API answers <c>"unit": "TABLESPOON"</c>. <c>JsonStringEnumConverter</c>
+/// makes it a string and <c>JsonStringEnumMemberName</c> supplies the spelling. The
+/// two families look alike and are read by different libraries — <c>PgName</c> by
+/// Npgsql, the JSON ones by the serialiser. That they carry the same text follows
+/// from the values chosen, not from any link between them.
+/// <c>schema.prisma</c> stays the source of truth: a new unit is added there first,
+/// and then needs both attributes here.
 /// </summary>
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum Unit
