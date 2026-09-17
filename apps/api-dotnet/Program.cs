@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using RecipeApi.Data;
 using RecipeApi.Models;
 using RecipeApi.Utility;
+using RecipeApi.Services;
 
 DotNetEnv.Env.NoClobber().TraversePath().Load();
 
@@ -19,8 +20,8 @@ builder.Services.AddDbContext<RecipeDbContext>(options =>
 
 
 builder.Services.AddControllers();
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
+builder.Services.AddScoped<RecipeService>();
+
 
 var app = builder.Build();
 
