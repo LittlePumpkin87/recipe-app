@@ -107,7 +107,9 @@ dotnet run --project apps/api-dotnet
 ```
 
 It listens on http://localhost:5000, so it does not collide with the NestJS API
-on port 3000. To point `requests.http` at it, change `@host` to that port.
+on port 3000. `requests.http` sits in the repository root and carries both ports
+as `@host`, one of them commented out — the REST Client uses the last assignment
+that is not commented, so switching backends means moving the `#` by one line.
 
 The port lives in `apps/api-dotnet/Properties/launchSettings.json`. That file is
 read by `dotnet run` only — a container ignores it and takes `ASPNETCORE_URLS`
@@ -139,7 +141,6 @@ This is an npm workspaces monorepo. Application packages live under `apps/`.
 ├── apps/
 │   ├── api/                # NestJS backend (workspace name: "api")
 │   │   ├── prisma/         # schema, migrations and seed.ts
-│   │   ├── requests.http   # example requests for the VS Code REST Client
 │   │   └── src/
 │   │       ├── common/             # helpers shared by seed and services
 │   │       ├── generated/prisma/   # Prisma client — generated, never edited
@@ -148,11 +149,14 @@ This is an npm workspaces monorepo. Application packages live under `apps/`.
 │   │       └── ingredients/        # feature module
 │   └── api-dotnet/         # ASP.NET Core backend (project: RecipeApi)
 │       ├── Controllers/    # attribute-routed controllers
+│       ├── Services/       # business logic and the only place queries live
+│       ├── Dtos/           # response records — one file per resource
 │       ├── Data/           # RecipeDbContext — scaffolded, plus one partial
 │       ├── Models/         # entity classes — scaffolded, plus the unit enum
 │       ├── Utility/        # UrlExtensions: DATABASE_URL → Npgsql
 │       └── Properties/     # launchSettings.json — local ports only
 ├── .config/                # dotnet-tools.json — pins dotnet-ef
+├── requests.http           # example requests — tests either backend
 ├── docker-compose.yml      # local infrastructure
 ├── global.json             # pins the .NET SDK version
 ├── .env                    # local secrets — never committed
@@ -351,6 +355,37 @@ and get one of them wrong. The V2 meal plan cares about `prepMinutes` ("can I do
 this on a Tuesday?"), planning the day itself about `totalMinutes` ("when do I
 have to start?"). Both are optional. Finer breakdowns — resting and baking as
 separate figures — stay in `description` rather than becoming columns.
+
+**`instructions` holds Markdown, not HTML** (decided 17 September 2026). The
+column is plain `text` and always was; what changed is what goes into it. Bold
+text, lists and links are all expressible in Markdown, so the format restricts
+nothing a recipe needs to say.
+
+Storing HTML would have put a sanitiser into both backends. From V3 on,
+instruction text arrives from other people's websites, where schema.org delivers
+it as HTML — stored unfiltered, that is stored XSS. Sanitising means an allowlist
+of tags and attributes, and this repository has two backends: `sanitize-html` in
+TypeScript and `Ganss.Xss` in C#, two lists that would have to stay identical.
+That is the shape of the normalisation problem again, with a worse failure mode.
+A diverging normalisation produces a duplicate row; a diverging allowlist
+produces a hole.
+
+Markdown needs none of it. `**Teig**` is inert in every language, so neither
+backend gains a dependency and nothing has to be checked on write. Rendering —
+and with it sanitising — happens once, in Angular, where the DOM is actually
+produced.
+
+Two further consequences fall out in the project's favour. The renderer can be
+limited to bold, lists and links and made to drop headings, so a recipe body
+cannot break the page's heading outline and the WCAG AA requirement survives
+contact with user input. And unrendered Markdown is still readable prose, where
+unrendered HTML is markup.
+
+The editor is a `<textarea>` with a small toolbar and a preview (Sprint 8), not a
+WYSIWYG component. Recipe *steps* as their own table remain a V2 ticket and are a
+separate question: paragraphs are formatting and belong in the text, steps are
+data, and a table only earns its place once something uses the structure —
+ticking them off while cooking, a timer per step.
 
 **`note`, `groupLabel` and `position` belong to the line, not to the
 ingredient.** `note` holds the qualifier for this one occurrence — "fresh",

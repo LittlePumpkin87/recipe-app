@@ -1,4 +1,5 @@
-@host = http://localhost:3000
+# @host = http://localhost:3000
+@host = http://localhost:5000
 
 ### Standard-Endpunkt -> 200
 GET {{host}}/
@@ -28,7 +29,7 @@ GET {{host}}/recipes?search=
 ### ───────────── GET /recipes/:id ─────────────
 
 ### Einzelnes Rezept inkl. Zutaten — id aus der Liste einsetzen -> 200
-GET {{host}}/recipes/01a05dfb-c62a-7443-9462-215ebebaf729
+GET {{host}}/recipes/01a05dfb-c634-7687-8752-08eb654a48e3
 
 ### Unbekannte, aber gültige UUID -> 404
 GET {{host}}/recipes/01a05dfb-c62a-7443-9462-215ebebaf724
