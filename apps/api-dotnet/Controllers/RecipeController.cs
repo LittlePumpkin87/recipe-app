@@ -1,22 +1,27 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using RecipeApi.Data;
+using RecipeApi.Dtos;
+using RecipeApi.Services;
 
 namespace RecipeApi.Controllers;
 
 [ApiController]
 [Route("recipes")]
-public class RecipeController(RecipeDbContext recipeDb) : ControllerBase
+public class RecipeController(RecipeService recipeService) : ControllerBase
 {
-    private readonly RecipeDbContext _db = recipeDb;
+    private readonly RecipeService _recipes = recipeService;
 
-  [HttpGet]
-    public async Task<IActionResult> Get()
+    [HttpGet]
+    public async Task<ActionResult<IReadOnlyList<RecipeListItemDto>>> GetAll(
+          [FromQuery] string? search
+      )
     {
-        var recipes = await _db.Recipes
-            .Include(r => r.RecipeIngredients)
-                .ThenInclude(i => i.Ingredient)
-            .ToListAsync();
-        return Ok(recipes);
+        return Ok(await _recipes.GetAllAsync(search));
+    }
+
+    [HttpGet("{id}")]
+    public async Task<ActionResult<RecipeDetailDto>> GetById(Guid id)
+    {
+        var recipe = await _recipes.GetByIdAsync(id);
+        return recipe is null ? NotFound() : Ok(recipe);
     }
 }

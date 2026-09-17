@@ -27,4 +27,31 @@ public class RecipeService(RecipeDbContext recipeDb)
                 r.TotalMinutes
             )).ToListAsync();
     }
+
+
+    public async Task<RecipeDetailDto?> GetByIdAsync(Guid id)
+    {
+        return await _db.Recipes
+            .Where(r => r.Id == id)
+            .Select(r => new RecipeDetailDto(
+                r.Id,
+                r.Title,
+                r.Servings,
+                r.PrepMinutes,
+                r.TotalMinutes,
+                r.Description,
+                r.Instructions,
+                r.RecipeIngredients
+                        .OrderBy(i => i.Position)
+                        .Select(i => new RecipeIngredientDto(
+                         i.IngredientId,
+                        i.Ingredient.Name,
+                        i.Amount,
+                        i.Unit,
+                        i.Note,
+                        i.GroupLabel,
+                        i.Position))
+                    .ToList()))
+            .FirstOrDefaultAsync();
+    }
 }
