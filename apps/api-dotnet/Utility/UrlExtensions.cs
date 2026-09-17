@@ -2,6 +2,13 @@ namespace RecipeApi.Utility;
 
 using Npgsql;
 
+/// <summary>
+/// Turns the repository's single <c>DATABASE_URL</c> into the spelling Npgsql accepts:
+/// Prisma reads the URI form, Npgsql only <c>Host=…;Username=…</c>. An existing
+/// <c>ConnectionStrings:Default</c> wins and is left untouched. Must run before
+/// <c>AddDbContext</c> and after <c>DotNetEnv</c> has loaded the root <c>.env</c>.
+/// Details in the README under "Second backend: ASP.NET Core".
+/// </summary>
 public static class UrlExtensions
 {
     public static WebApplicationBuilder AddDatabaseConnection(this WebApplicationBuilder builder)
