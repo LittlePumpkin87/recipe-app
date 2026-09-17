@@ -1,17 +1,18 @@
 ---
 name: Feature
-about: Ein Arbeitspaket mit Akzeptanzkriterien
+about: A work package with acceptance criteria
 title: ""
 labels: ""
 assignees: "LittlePumpkin87"
 ---
-## Kontext
 
-## Akzeptanzkriterien
+## Context
+
+## Acceptance criteria
 
 - [ ] 
 
 ## Definition of Done
 
-- [ ] Jede angelegte Datei ist erklärbar
-- [ ] Code committet und gepusht
+- [ ] Every file added is explainable
+- [ ] Committed and pushed
