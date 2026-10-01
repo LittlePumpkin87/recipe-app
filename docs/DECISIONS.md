@@ -401,6 +401,36 @@ Core has no such mapping: an escaping exception is a 500 unless middleware is
 added to translate it. So `GetByIdAsync` returns `RecipeDetailDto?` and the
 controller decides that `null` means `NotFound()`.
 
+### Validation
+
+Decided 2026-09-24. The Nest API validates with `class-validator`, which Nest
+ships with; the .NET side uses DataAnnotations, which ASP.NET Core ships with.
+That keeps the comparison honest — both backends are measured by what their
+framework offers, not by what can be bolted onto it.
+
+`[ApiController]` collects the violations by itself and answers 400 with
+`ProblemDetails`, nested collections included: a broken ingredient line is
+reported as `ingredients[0].name`, the counterpart to Nest's
+`ingredients.0.name`.
+
+Two rules DataAnnotations cannot express, and where they go instead:
+
+- **"At most two decimal places"** for `amount` has no built-in attribute.
+  `[Range]` covers the bounds, the scale needs a small custom
+  `ValidationAttribute`.
+- **No counterpart to `@Transform`.** Nest trims `name` before it validates,
+  otherwise `"   "` passes `@IsNotEmpty` and normalizes to an empty
+  `name_normalized`. DataAnnotations has no step that runs before validation, so
+  the trimming moves into the property itself.
+
+FluentValidation expresses both directly and is common in .NET projects. It is
+**deferred to V2, not rejected**. The V2 rules — meal plan entries, shopping
+list quantities — are where the extra expressiveness starts to pay, and by then
+both write paths exist in both languages to compare it against. Its cost today
+is a NuGet dependency plus wiring: since version 11 the automatic MVC
+integration lives in a separate package its own maintainers advise against, so
+the validator has to be invoked from a filter or the controller.
+
 Whether both backends are carried on into V2 is open.
 
 ---

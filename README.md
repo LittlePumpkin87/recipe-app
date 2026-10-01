@@ -755,7 +755,10 @@ docker compose exec -T db psql -U recipe -d recipe < backup.sql
 **V1** — recipe CRUD, central ingredient list without duplicates, search by
 title, mobile friendly, WCAG AA.
 
-**V2** — random weekly suggestions, meal plan, shopping list.
+**V2** — random weekly suggestions, meal plan, shopping list. Also where
+validation in the .NET backend is revisited: V1 uses DataAnnotations, and
+FluentValidation is the planned replacement once the rules grow. See
+[Validation](docs/DECISIONS.md#validation).
 
 **V3** — recipe import from URLs via schema.org metadata.
 
