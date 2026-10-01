@@ -4,6 +4,7 @@ using RecipeApi.Data;
 using RecipeApi.Models;
 using RecipeApi.Utility;
 using RecipeApi.Services;
+using RecipeApi.Exceptions;
 
 DotNetEnv.Env.NoClobber().TraversePath().Load();
 
@@ -20,10 +21,14 @@ builder.Services.AddDbContext<RecipeDbContext>(options =>
 
 
 builder.Services.AddControllers();
+builder.Services.AddExceptionHandler<ConflictExceptionHandler>();
+builder.Services.AddProblemDetails();
 builder.Services.AddScoped<RecipeService>();
 
 
 var app = builder.Build();
+
+app.UseExceptionHandler();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
