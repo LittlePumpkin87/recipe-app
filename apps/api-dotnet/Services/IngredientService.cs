@@ -9,10 +9,8 @@ using RecipeApi.Utility;
 namespace RecipeApi.Services;
 
 /// <summary>
-/// The only place an ingredient query may live. Writing happens without looking for an
-/// existing row first: the unique index on <c>name_normalized</c> decides, and a lookup
-/// beforehand would leave a gap in which two requests both see the name as free. No
-/// entity leaves this class — what the endpoints return is built here.
+/// The only place an ingredient query may live. No entity leaves this class — what the
+/// endpoints return is built here.
 /// </summary>
 public class IngredientService(RecipeDbContext recipeDb)
 {

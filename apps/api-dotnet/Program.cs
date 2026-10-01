@@ -1,10 +1,11 @@
 // Load DotNetEnv
+using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using RecipeApi.Data;
-using RecipeApi.Models;
-using RecipeApi.Utility;
-using RecipeApi.Services;
 using RecipeApi.Exceptions;
+using RecipeApi.Models;
+using RecipeApi.Services;
+using RecipeApi.Utility;
 
 DotNetEnv.Env.NoClobber().TraversePath().Load();
 
@@ -20,11 +21,14 @@ builder.Services.AddDbContext<RecipeDbContext>(options =>
         npgsql => npgsql.MapEnum<Unit>("unit")));
 
 
-builder.Services.AddControllers();
+builder.Services.AddControllers().AddJsonOptions(options =>
+{
+    options.JsonSerializerOptions.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow;
+});
 builder.Services.AddExceptionHandler<ConflictExceptionHandler>();
 builder.Services.AddProblemDetails();
 builder.Services.AddScoped<RecipeService>();
-
+builder.Services.AddScoped<IngredientService>();
 
 var app = builder.Build();
 

@@ -485,7 +485,7 @@ the same contract; the two columns track how far the second one has got.
 | PATCH | `/recipes/:id` | Update; a present ingredient list replaces the old one | built | — |
 | DELETE | `/recipes/:id` | Delete, `204` without a body | built | — |
 | GET | `/ingredients` | Autocomplete, `?search=`, capped at 20 results | built | — |
-| POST | `/ingredients` | Create an ingredient, 409 if the name exists | built | — |
+| POST | `/ingredients` | Create an ingredient, 409 if the name exists | built | built |
 
 ### How the two searches differ
 
@@ -618,7 +618,10 @@ the transaction's own, not yet committed writes.
 `POST /ingredients` does not look for an existing row before it writes. It
 inserts, and the unique index on `ingredient.name_normalized` decides. If the
 name is taken, Postgres refuses the insert, Prisma raises error code `P2002`,
-and the service turns that into `409 Conflict`.
+and the service turns that into `409 Conflict`. The .NET backend follows the same
+rule against the same index; only the name of the refusal differs, where Npgsql
+reports SQLSTATE `23505` inside an EF Core `DbUpdateException` — see
+[The writing endpoints](docs/DECISIONS.md#the-writing-endpoints).
 
 A lookup first would not save the catch, only add a query. Two requests for
 "Zwiebel" arriving together would both find nothing and both insert, and the

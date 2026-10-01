@@ -3,13 +3,9 @@ using NpgsqlTypes;
 
 namespace RecipeApi.Models;
 /// <summary>
-/// The C# side of the Postgres enum <c>unit</c>; EF Core has no CLR type for it and
-/// scaffolding skips it. Two attribute families with different readers: <c>PgName</c>
-/// by Npgsql, whose snake_case default would look for <c>gram</c> instead of
-/// <c>GRAM</c>, and the Json ones by the serialiser, which would otherwise write
-/// <c>"unit": 6</c> where NestJS answers <c>"unit": "TABLESPOON"</c>.
-/// <c>schema.prisma</c> stays the source of truth: a new unit goes there first and
-/// then needs both attributes here.
+/// The C# side of the Postgres enum <c>unit</c>. <c>PgName</c> is read by Npgsql, the
+/// Json attributes by the serialiser; a new unit goes into <c>schema.prisma</c> first
+/// and then needs both here.
 /// </summary>
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum Unit

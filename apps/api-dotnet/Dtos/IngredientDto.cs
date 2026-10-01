@@ -15,10 +15,8 @@ public record IngredientDto
 
 
 /// <summary>
-/// A class, not a record: validation attributes on a positional parameter never reach
-/// the property, and the trimming needs a setter. It runs before validation, which is
-/// what stops <c>"   "</c> from passing <c>[Required]</c> and normalizing to an empty
-/// <c>name_normalized</c> — the counterpart to Nest's <c>@Transform</c>.
+/// The body of <c>POST /ingredients</c>. <c>Name</c> is trimmed in the setter, before
+/// validation sees it.
 /// </summary>
 public class CreateIngredientDto
 {

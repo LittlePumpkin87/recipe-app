@@ -6,10 +6,8 @@ using RecipeApi.Models;
 namespace RecipeApi.Services;
 
 /// <summary>
-/// The only place a recipe query may live. Both read paths project straight into DTOs,
-/// so the overview never reads <c>instructions</c> and no entity leaves this class.
-/// A missing recipe is <c>null</c>, not an exception — the controller decides what the
-/// absence means.
+/// The only place a recipe query may live. Both read paths project straight into DTOs;
+/// a missing recipe is <c>null</c>, not an exception.
 /// </summary>
 public class RecipeService(RecipeDbContext recipeDb)
 {

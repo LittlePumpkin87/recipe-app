@@ -4,12 +4,8 @@ using Microsoft.AspNetCore.Mvc;
 namespace RecipeApi.Exceptions;
 
 /// <summary>
-/// Turns <see cref="ConflictException"/> into 409. NestJS maps any <c>HttpException</c>
-/// to a response through a filter it ships with; ASP.NET Core has no such mapping, so
-/// without a handler the exception would end as 500. Every registered handler is offered
-/// every exception — the type check below, not the framework, decides what belongs here,
-/// and <c>false</c> hands the rest on. The body goes through <c>IProblemDetailsService</c>
-/// so that a 409 looks like the 400 from validation.
+/// Turns <see cref="ConflictException"/> into a 409 with a <c>ProblemDetails</c> body
+/// and hands every other exception on.
 /// </summary>
 public class ConflictExceptionHandler(IProblemDetailsService problemDetails) : IExceptionHandler
 {

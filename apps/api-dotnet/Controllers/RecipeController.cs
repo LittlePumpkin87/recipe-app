@@ -6,9 +6,7 @@ namespace RecipeApi.Controllers;
 
 /// <summary>
 /// Maps the /recipes endpoints onto <see cref="RecipeService"/> and holds no business
-/// logic. The id carries no <c>:guid</c> constraint on purpose: without it a non-UUID
-/// path fails model binding and answers 400, while the constraint would miss the route
-/// and answer 404 — which the contract reserves for a valid id with no recipe.
+/// logic.
 /// </summary>
 [ApiController]
 [Route("recipes")]

@@ -401,6 +401,56 @@ Core has no such mapping: an escaping exception is a 500 unless middleware is
 added to translate it. So `GetByIdAsync` returns `RecipeDetailDto?` and the
 controller decides that `null` means `NotFound()`.
 
+### The writing endpoints
+
+`POST /ingredients` is the first of them, and the smallest: one row, no
+transaction. What it had to settle applies to every write that follows.
+
+**The unique index decides, in both languages.** Neither backend looks for an
+existing row before it writes — the reasoning is in
+[Duplicates: let the constraint decide](../README.md#duplicates-let-the-constraint-decide)
+and does not change with the language. What changes is the shape of the refusal.
+Prisma raises `P2002`; Npgsql raises a `PostgresException` whose `SqlState` is
+`23505`, the SQLSTATE that Prisma's code stands for, available as
+`PostgresErrorCodes.UniqueViolation` rather than as a literal. It arrives wrapped
+in EF Core's `DbUpdateException`, so the catch has to look at `InnerException` —
+done as an exception filter (`when`), which leaves every other
+`DbUpdateException` untouched instead of catching it and rethrowing.
+
+**The service knows no status codes.** In Nest, `IngredientsService.create`
+throws `ConflictException` and the framework's exception filter answers 409.
+ASP.NET Core has no such mapping, and an escaping exception is a 500. The same
+split is rebuilt by hand: `Exceptions/ConflictException.cs` is a plain exception
+named after the status code, `ConflictExceptionHandler` implements
+`IExceptionHandler` and returns `false` for anything else, and `Program.cs` wires
+it with `AddExceptionHandler` plus `AddProblemDetails` and enables it with
+`UseExceptionHandler`. Without the `AddProblemDetails` the 409 would come back
+with an empty body.
+
+**Unknown fields are refused globally.** Nest's `ValidationPipe` is configured
+with `forbidNonWhitelisted`, so `{ "name": "Lauch", "id": "abc" }` is a 400.
+System.Text.Json skips unmapped members silently, which would have made the same
+body a 201, so `AddJsonOptions` sets
+`UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow`. The deserialiser
+then throws, the input formatter records a model error, and `[ApiController]`
+answers 400 — the same route every other validation failure takes. It is set
+globally rather than as an attribute on the DTO because `forbidNonWhitelisted` is
+global too, and because `POST /recipes` would otherwise need the attribute on the
+nested ingredient line as well. The pipe's other half, `whitelist: true`, needs no
+counterpart: it strips unknown properties off the object, which System.Text.Json
+never puts there.
+
+**201 without a `Location` header.** Nest answers 201 to any `@Post` by default;
+ASP.NET Core returns whatever the action returns, and `Ok(dto)` would have been a
+200 and a broken contract. `CreatedAtAction` is the usual answer and does not fit
+here — it builds `Location` from an action, and V1 has no route that serves a
+single ingredient. So the action returns `Created` with no URI. The `null` needs a
+cast to `string?`, because `Created(null, value)` is ambiguous between the
+`string?` and the `Uri` overload.
+
+The error *body* is not aligned here either, for the reason given above under the
+reading endpoints: the contract between the backends is the status code.
+
 ### Validation
 
 Decided 2026-09-24. The Nest API validates with `class-validator`, which Nest
@@ -421,7 +471,12 @@ Two rules DataAnnotations cannot express, and where they go instead:
 - **No counterpart to `@Transform`.** Nest trims `name` before it validates,
   otherwise `"   "` passes `@IsNotEmpty` and normalizes to an empty
   `name_normalized`. DataAnnotations has no step that runs before validation, so
-  the trimming moves into the property itself.
+  the trimming moves into the property itself. That is what decides the shape of
+  the DTO: a request DTO is a class with a backing field, not a record. A
+  positional record parameter has nowhere to put the trim, and validation
+  attributes written on one never reach the generated property, so they are
+  simply not checked. The response DTOs stay records — nothing is validated or
+  trimmed on the way out.
 
 FluentValidation expresses both directly and is common in .NET projects. It is
 **deferred to V2, not rejected**. The V2 rules — meal plan entries, shopping
