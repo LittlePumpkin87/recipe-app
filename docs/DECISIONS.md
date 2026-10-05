@@ -451,6 +451,69 @@ cast to `string?`, because `Created(null, value)` is ambiguous between the
 The error *body* is not aligned here either, for the reason given above under the
 reading endpoints: the contract between the backends is the status code.
 
+`POST /recipes` follows, and it is where the two ORMs stop resembling each other.
+
+**The transaction is explicit, and it did not have to be.** EF Core wraps every
+`SaveChangesAsync` in a transaction of its own. Written as a single save — the new
+ingredients hung into the recipe through navigation properties, EF ordering the
+INSERTs itself — the endpoint would already be atomic, with no
+`BeginTransactionAsync` anywhere. That version was rejected for a reason that is
+about the project, not about the code: it makes the ticket's rollback criterion
+vacuous, because nothing has been written before the one save, so there is nothing
+to roll back. The service therefore saves twice — ingredients first, so they carry
+their ids, then the recipe with its join rows — and holds the two together with an
+explicit transaction. Without it, a failure in the second save would leave freshly
+created ingredients behind. The test was done by hand, exactly as on the Nest side:
+a temporary `throw` between the two saves, a request naming an ingredient that did
+not exist yet, 500, and the name absent from `ingredient` afterwards.
+
+Rollback needs no `catch`. The transaction is held in an `await using` variable, and
+a transaction disposed without a commit rolls back, so an exception escaping before
+`CommitAsync` does the right thing on its own.
+
+**There is no `upsert`, which turns out to be an improvement.** `resolveIngredientIds`
+upserts once per line, so twenty ingredients are twenty round trips. EF Core offers
+nothing equivalent, and the shape that replaces it is a single query: normalise every
+name, `Distinct()`, and one `Where(... Contains ...)`, which Npgsql writes as
+`name_normalized = ANY($1)`. What comes back is a dictionary keyed by the normalised
+name; the loop then adds an entity for each name that is missing from it. A name
+appearing twice in one request is handled by the same dictionary — the new entity is
+put in it immediately, so the second `" salz "` finds what the first `"Salz"` created.
+
+**The dictionary holds entities, not ids.** Prisma can return an id because `upsert`
+has already written the row. Here a new ingredient has no id until Postgres assigns
+one, so the join row is linked through the navigation property
+(`Ingredient = ingredient`) and EF fills the foreign key once it knows it. The same
+line works for ingredients that were already in the database, so the loop never has
+to tell the two cases apart.
+
+**`servings` is left alone rather than defaulted.** The column defaults to 2 in
+Postgres, and EF decides per property whether to send it at all: a value equal to the
+property's *sentinel* is omitted from the INSERT. Since EF Core 8 a property
+configured with `HasDefaultValue(x)` takes `x` as its sentinel, which raised the
+question whether a freshly built `Recipe` — `Servings == 0` — would write an explicit
+0 and shut the database default out. It does not: a request without `servings` comes
+back with 2. So nothing is configured, and the service assigns `Servings` only when
+the request carried a value. Writing `2` in C# was never an option; the default would
+then live in two places.
+
+**201 with a `Location` header, unlike `POST /ingredients`.** The objection above does
+not apply here, because `GET /recipes/{id}` exists: `CreatedAtAction` can build the URI
+from `nameof(GetById)` plus the new id. Nest sends no `Location`, and that is not a
+breach — the contract is the status code, and the header is what ASP.NET Core does
+when it can.
+
+**The response is fetched again after the commit.** `CreateAsync` returns
+`GetByIdAsync(recipe.Id)`, which costs one more query but is the only way the promise
+"same shape as `GET /recipes/{id}`" holds by construction rather than by hand.
+
+**One rendering difference remains.** `amount` comes back as `800.00` where Nest sends
+`800`. A `decimal` carries the scale of `numeric(8,2)` and System.Text.Json writes it
+out; a JavaScript number cannot hold trailing zeros, so Prisma's `.toNumber()` loses
+them. The values parse equal, the bytes differ. Aligning it would mean a converter
+whose only job is to drop information, which is not worth it for a figure every client
+reads as a number.
+
 ### Validation
 
 Decided 2026-09-24. The Nest API validates with `class-validator`, which Nest
@@ -463,11 +526,26 @@ framework offers, not by what can be bolted onto it.
 reported as `ingredients[0].name`, the counterpart to Nest's
 `ingredients.0.name`.
 
-Two rules DataAnnotations cannot express, and where they go instead:
+Three rules DataAnnotations cannot express, and where they go instead:
 
 - **"At most two decimal places"** for `amount` has no built-in attribute.
   `[Range]` covers the bounds, the scale needs a small custom
-  `ValidationAttribute`.
+  `ValidationAttribute`. `Utility/MaxDecimalPlacesAttribute.cs` is it: it compares
+  the value with itself rounded to the allowed number of places. Reading
+  `decimal.Scale` would have been shorter and wrong — a `decimal` keeps trailing
+  zeros, so `1.500` has a scale of 3 and would be refused, while
+  `@IsNumber({ maxDecimalPlaces: 2 })` accepts it, JavaScript numbers having
+  dropped the zeros long before the check. The rule exists because the column is
+  `numeric(8,2)`: Postgres rounds a third place away instead of complaining.
+- **"May be absent, must not be null"** for `servings`. Nest says this with
+  `@ValidateIf((_, value) => value !== undefined)`; `@IsOptional` would not do, it
+  lets `null` through. An `int?` in C# cannot tell the two apart — both arrive as
+  `null`. The distinction is recovered where the trimming already lives, in the
+  setter: System.Text.Json calls it for `"servings": null` and not at all for a
+  missing field, so a second private field records that it ran. Deciding on two
+  fields at once is beyond any attribute, so `CreateRecipeDto` implements
+  `IValidatableObject`; its `Validate` names `Servings` in the `ValidationResult`,
+  which is what files the error under `servings` in the `ProblemDetails`.
 - **No counterpart to `@Transform`.** Nest trims `name` before it validates,
   otherwise `"   "` passes `@IsNotEmpty` and normalizes to an empty
   `name_normalized`. DataAnnotations has no step that runs before validation, so
@@ -478,7 +556,7 @@ Two rules DataAnnotations cannot express, and where they go instead:
   simply not checked. The response DTOs stay records — nothing is validated or
   trimmed on the way out.
 
-FluentValidation expresses both directly and is common in .NET projects. It is
+FluentValidation expresses all three directly and is common in .NET projects. It is
 **deferred to V2, not rejected**. The V2 rules — meal plan entries, shopping
 list quantities — are where the extra expressiveness starts to pay, and by then
 both write paths exist in both languages to compare it against. Its cost today

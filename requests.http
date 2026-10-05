@@ -118,6 +118,43 @@ Content-Type: application/json
   ]
 }
 
+### servings gesetzt -> 201 mit servings 4 (ohne das Feld greift der DB-Default 2)
+POST {{host}}/recipes
+Content-Type: application/json
+
+{
+  "title": "Kartoffelsuppe für vier",
+  "instructions": "Kartoffeln schälen …",
+  "servings": 4,
+  "ingredients": [
+    { "name": "CurcumaC", "amoun", "amount": 1600, "unit": "GRAM" }
+  ]
+}
+
+### amount mit drei Nachkommastellen -> 400 (numeric(8,2) würde still runden)
+POST {{host}}/recipes
+Content-Type: application/json
+
+{
+  "title": "Kartoffelsuppe",
+  "instructions": "Kartoffeln schälen …",
+  "ingredients": [
+    { "name": "Mehl", "amount": 1.505, "unit": "TABLESPOON" }
+  ]
+}
+
+### amount 0 -> 400 (Untergrenze, Mengen sind positiv)
+POST {{host}}/recipes
+Content-Type: application/json
+
+{
+  "title": "Kartoffelsuppe",
+  "instructions": "Kartoffeln schälen …",
+  "ingredients": [
+    { "name": "Mehl", "amount": 0, "unit": "TABLESPOON" }
+  ]
+}
+
 
 ### ───────────── PATCH /recipes/:id ─────────────
 ### Platzhalter-id ist unbekannt (-> 404). Für die 200er die id
@@ -211,10 +248,22 @@ GET {{host}}/ingredients?search=SALZ
 POST {{host}}/ingredients
 Content-Type: application/json
 
-{ "name": "Paprika", "defaultUnit": "PIECE" }
+{ "name": "Liebstöckel", "defaultUnit": "PIECE" }
 
 ### Unbekanntes Feld id -> 400 (forbidNonWhitelisted)
 POST {{host}}/ingredients
 Content-Type: application/json
 
-{ "name": "Lauch", "id": "abc" }
+{ "name": "Kurkuma", "id": "abc" }
+
+### Name nur aus Leerzeichen -> 400 (getrimmt, bevor validiert wird)
+POST {{host}}/ingredients
+Content-Type: application/json
+
+{ "name": "   " }
+
+### Einheit nicht im Enum -> 400
+POST {{host}}/ingredients
+Content-Type: application/json
+
+{ "name": "Petersilie", "defaultUnit": "EL" }

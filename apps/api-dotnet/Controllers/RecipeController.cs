@@ -28,4 +28,11 @@ public class RecipeController(RecipeService recipeService) : ControllerBase
         var recipe = await _recipes.GetByIdAsync(id);
         return recipe is null ? NotFound() : Ok(recipe);
     }
+
+    [HttpPost]
+    public async Task<ActionResult<RecipeDetailDto>> Create(CreateRecipeDto dto)
+    {
+        var recipe = await _recipes.CreateAsync(dto);
+        return CreatedAtAction(nameof(GetById), new { id = recipe.Id }, recipe);
+    }
 }
