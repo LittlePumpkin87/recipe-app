@@ -484,7 +484,7 @@ the same contract; the two columns track how far the second one has got.
 | POST | `/recipes` | Create, including the ingredient list | built | built |
 | PATCH | `/recipes/:id` | Update; a present ingredient list replaces the old one | built | — |
 | DELETE | `/recipes/:id` | Delete, `204` without a body | built | — |
-| GET | `/ingredients` | Autocomplete, `?search=`, capped at 20 results | built | — |
+| GET | `/ingredients` | Autocomplete, `?search=`, capped at 20 results | built | built |
 | POST | `/ingredients` | Create an ingredient, 409 if the name exists | built | built |
 
 ### How the two searches differ
@@ -511,6 +511,11 @@ holds for the search, for `POST /ingredients` and for the lookup inside
 Recipe titles have no normalized column and do not need one. `?search=roemer`
 finding *Römertopfbrot* is a nice-to-have; an ingredient list that grows a
 second `Öl` row is a data defect.
+
+The same split exists in the .NET API, one layer closer to the SQL: the recipe
+search uses `EF.Functions.ILike`, the ingredient search `EF.Functions.Like`. See
+[The reading endpoints](docs/DECISIONS.md#the-reading-endpoints) for why the
+weaker operator is the right one on a normalized column.
 
 ### `POST /recipes`: one request, one transaction
 

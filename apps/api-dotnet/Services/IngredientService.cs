@@ -16,6 +16,26 @@ public class IngredientService(RecipeDbContext recipeDb)
 {
     private readonly RecipeDbContext _db = recipeDb;
 
+
+    public async Task<IReadOnlyList<IngredientDto>> GetAllAsync(string? search)
+    {
+        var term = IngredientName.Normalize(search ?? string.Empty);
+        IQueryable<Ingredient> query = _db.Ingredients;
+        if (!string.IsNullOrEmpty(term))
+        {
+            query = query.Where(i => EF.Functions.Like(i.NameNormalized, $"%{term}%"));
+        }
+        return await query
+        .OrderBy(i => i.Name)
+        .Take(20)
+        .Select(i => new IngredientDto(
+            i.Id,
+            i.Name,
+            i.DefaultUnit
+        )).ToListAsync();
+    }
+
+
     public async Task<IngredientDto> CreateAsync(CreateIngredientDto dto)
     {
         ArgumentNullException.ThrowIfNull(dto.Name);

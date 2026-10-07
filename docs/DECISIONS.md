@@ -341,6 +341,7 @@ column type, because Npgsql maps `DateTime` to `timestamptz` by default; see
 
 `GET /recipes` and `GET /recipes/{id}` answer with the same JSON as the NestJS
 versions, but four things had to be arranged differently to get there.
+`GET /ingredients` adds a fifth, at the end of this section.
 
 **The projection is the column list.** On the Prisma side, picking columns and
 shaping the response are two separate steps: `select: recipeListSelect` names the
@@ -400,6 +401,37 @@ ships an exception filter that turns any `HttpException` into a response. ASP.NE
 Core has no such mapping: an escaping exception is a 500 unless middleware is
 added to translate it. So `GetByIdAsync` returns `RecipeDetailDto?` and the
 controller decides that `null` means `NotFound()`.
+
+**`Like`, not `ILike`, is what a normalized column asks for.** This is the fifth
+point, and it belongs to `GET /ingredients?search=`. The search term goes through
+`IngredientName.Normalize` — not through `Trim` — and is then compared against
+`name_normalized`. That is the read side of the normalisation decision: a
+computed column in Postgres would have covered the write side only, because a
+term that never passed through the same function cannot match the column it is
+compared with.
+
+Once both sides are lowercase, the case-insensitive operator has nothing left to
+do. `EF.Functions.ILike` still works, but it is wrong in three small ways.
+It claims the column may hold uppercase letters, which `Normalize` rules out on
+every write, so the next reader has to go looking for a case that does not exist.
+It folds case a second time, by the database locale rather than by
+`ToLowerInvariant` — a second definition of "the same name" next to the one the
+whole decision was meant to keep singular. And it would put different SQL behind
+the same endpoint on the two ports, which the shared request file in sprint 9 is
+supposed to rule out. `EF.Functions.Like` comes from EF Core itself, `ILike` from
+the Npgsql provider; `ILIKE` is a Postgres extension and appears in no SQL
+standard.
+
+The recipe search keeps `ILike`, and for the opposite reason: `recipe.title`
+stores the display form, `Römertopfbrot` with a capital R, and `?search=römer`
+has to find it. There the case folding is the work, not the surplus.
+
+One query shows the whole rule. It filters on `name_normalized`, orders by `name`
+and projects `name` into the DTO: **compare against the normalized column,
+display and sort the other one.** The cap of 20 rows sits between the ordering
+and the projection, so Postgres sorts the whole table and returns the first
+twenty — the autocomplete wants the first twenty by name, not twenty arbitrary
+rows sorted afterwards.
 
 ### The writing endpoints
 

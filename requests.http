@@ -1,63 +1,147 @@
-# @host = http://localhost:3000
-@host = http://localhost:5000
+### ───────────── Notes ─────────────
+# The same requests run against both backends. To switch, comment out one @host
+# line and leave the other active:
+#   3000 = NestJS  (apps/api,        npm run start:dev -w api)
+#   5000 = .NET    (apps/api-dotnet, dotnet run)
+#
+# Not built on both sides yet: PATCH and DELETE exist in NestJS only (issues #3
+# and #4). On port 5000 the route answers 405 until then — it knows GET only.
+#
+# The status code is the contract, the error body is not: Nest sends
+# { statusCode, message, error }, ASP.NET Core sends RFC 9457 ProblemDetails.
+# A deliberate difference, see docs/DECISIONS.md.
+#
+# Three requests are named (# @name …). Later requests reach into their response
+# with {{name.response.body.$.id}}, so no UUID has to be pasted by hand. This
+# needs the named request to have been sent once in this editor session. If the
+# variable stays unresolved, paste the id from the response instead.
+#
+# The starting point is the seed (npx prisma db seed from apps/api): the recipes
+# Langos and Römertopfbrot, 17 ingredients.
 
-### Standard-Endpunkt -> 200
-GET {{host}}/
+@host = http://localhost:3000
+# @host = http://localhost:5000
 
 
 ### ───────────── GET /recipes ─────────────
 
-### Alle Rezepte, nach Titel sortiert -> 200
+### All recipes, ordered by title -> 200
+### Named: the detail requests below take their id from this response.
+# @name recipeList
 GET {{host}}/recipes
 
-### Suche, Teilwort am Anfang: findet Langos -> 200
+### Prefix of a word: finds Langos -> 200
 GET {{host}}/recipes?search=lang
 
-### Suche, Großschreibung egal: findet Langos -> 200
+### Case does not matter: finds Langos -> 200 (ILIKE on recipe.title)
 GET {{host}}/recipes?search=LANGOS
 
-### Suche, Teilwort in der Mitte: findet Römertopfbrot -> 200
+### Substring in the middle: finds Römertopfbrot -> 200
 GET {{host}}/recipes?search=brot
 
-### Suche ohne Treffer -> 200 mit []
+### Umlaut as written: finds Römertopfbrot -> 200
+GET {{host}}/recipes?search=römer
+
+### Umlaut transliterated: finds nothing -> 200 with []
+### Titles have no normalized column, "oe" is not resolved.
+GET {{host}}/recipes?search=roemer
+
+### Search without a hit -> 200 with []
 GET {{host}}/recipes?search=xyz
 
-### Leerer Suchbegriff: liefert alle Rezepte -> 200
+### Empty search term: no filter, every recipe -> 200
 GET {{host}}/recipes?search=
 
 
 ### ───────────── GET /recipes/:id ─────────────
 
-### Einzelnes Rezept inkl. Zutaten — id aus der Liste einsetzen -> 200
-GET {{host}}/recipes/01a05dfb-c634-7687-8752-08eb654a48e3
+### First recipe from the list, including its ingredients -> 200
+### Ingredients ordered by position, groupLabel and note per line.
+GET {{host}}/recipes/{{recipeList.response.body.$[0].id}}
 
-### Unbekannte, aber gültige UUID -> 404
-GET {{host}}/recipes/01a05dfb-c62a-7443-9462-215ebebaf724
+### Unknown but valid UUID v7 -> 404
+GET {{host}}/recipes/00000000-0000-7000-8000-000000000000
 
-### Keine UUID -> 400
+### Valid UUID v4 -> 400 in Nest, 404 in .NET
+### A deliberate difference: ParseUUIDPipe checks the version, Guid has no notion
+### of one.
+GET {{host}}/recipes/3f6b2c1e-8a4d-4f7b-9c2e-5d1a7b3f8e60
+
+### Not a UUID -> 400
 GET {{host}}/recipes/hallo
 
 
 ### ───────────── POST /recipes ─────────────
 
-### Rezept anlegen -> 201 (zweimal senden: "Kartoffeln" bleibt eine Zutat,
-### Position 3 und 4 zeigen beide auf Salz)
+### Create a recipe -> 201
+### Six ingredient lines, but five ingredients: "Salz" and "  SALZ  " normalize
+### to the same ingredient row and differ only in note and position. Sending it
+### twice changes nothing about that — the ingredients are reused, only the
+### recipe is new.
+### Named: the PATCH section below works on this recipe.
+# @name newRecipe
 POST {{host}}/recipes
 Content-Type: application/json
 
 {
-  "title": "Möhrchenbrei oder so?!",
-  "description": "Omas Kartoffelsuppe",
-  "instructions": "Kartoffeln schälen …",
+  "title": "Kartoffelsuppe",
+  "description": "Reicht für zwei große Teller.",
+  "servings": 2,
+  "prepMinutes": 20,
+  "totalMinutes": 45,
+  "instructions": "1. Kartoffeln und Möhren **grob** würfeln.\n2. In der Brühe 20 Min. kochen, dann grob pürieren.\n3. Mit Salz und Majoran abschmecken.\n\n- schmeckt am zweiten Tag besser\n- Würstchen passen dazu",
   "ingredients": [
-    { "name": "Kartoffeln", "amount": 800, "unit": "GRAM" },
-    { "name": "Mehl", "amount": 1, "unit": "TABLESPOON", "note": "zum Binden" },
-    { "name": "Salz", "amount": 1, "unit": "TEASPOON" },
-    { "name": " salz ", "note": "nach Geschmack" }
+    { "name": "Kartoffeln", "amount": 800, "unit": "GRAM", "groupLabel": "Für die Suppe" },
+    { "name": "Möhren", "amount": 2, "unit": "PIECE", "note": "mittelgroß", "groupLabel": "Für die Suppe" },
+    { "name": "Gemüsebrühe", "amount": 1, "unit": "LITER", "groupLabel": "Für die Suppe" },
+    { "name": "Salz", "amount": 1, "unit": "TEASPOON", "groupLabel": "Für die Suppe" },
+    { "name": "  SALZ  ", "note": "zum Abschmecken", "groupLabel": "Zum Abschmecken" },
+    { "name": "Majoran", "note": "getrocknet", "groupLabel": "Zum Abschmecken" }
   ]
 }
 
-### Leere Zutatenliste -> 400 (@ArrayNotEmpty)
+### Required fields only -> 201 with servings 2
+### The default comes from the database, not from the DTO. The second ingredient
+### line has neither amount nor unit — "salt to taste" is a valid case.
+POST {{host}}/recipes
+Content-Type: application/json
+
+{
+  "title": "Spiegelei",
+  "instructions": "Butter in der Pfanne schmelzen, Ei hineingleiten lassen, salzen.",
+  "ingredients": [
+    { "name": "Ei", "amount": 2, "unit": "PIECE" },
+    { "name": "Salz" }
+  ]
+}
+
+### servings given -> 201 with servings 4
+POST {{host}}/recipes
+Content-Type: application/json
+
+{
+  "title": "Kartoffelsuppe für vier",
+  "instructions": "Wie oben, alles verdoppelt.",
+  "servings": 4,
+  "ingredients": [
+    { "name": "Kartoffeln", "amount": 1600, "unit": "GRAM" }
+  ]
+}
+
+### Title of spaces only -> 400 (trimmed before it is validated)
+POST {{host}}/recipes
+Content-Type: application/json
+
+{
+  "title": "   ",
+  "instructions": "Kartoffeln schälen …",
+  "ingredients": [
+    { "name": "Kartoffeln", "amount": 800, "unit": "GRAM" }
+  ]
+}
+
+### Empty ingredient list -> 400
+### A recipe without ingredients is a text file.
 POST {{host}}/recipes
 Content-Type: application/json
 
@@ -67,7 +151,7 @@ Content-Type: application/json
   "ingredients": []
 }
 
-### Zutatenzeile ohne Namen -> 400 (Meldung nennt ingredients.0.name)
+### Ingredient line without a name -> 400 (the message names ingredients[0].name)
 POST {{host}}/recipes
 Content-Type: application/json
 
@@ -79,7 +163,9 @@ Content-Type: application/json
   ]
 }
 
-### Unbekanntes Feld sourceUrl -> 400 (forbidNonWhitelisted)
+### Unknown field sourceUrl -> 400
+### sourceUrl, sourceName and externalId are columns in the table but not in the
+### DTO — they belong to the V3 importer.
 POST {{host}}/recipes
 Content-Type: application/json
 
@@ -92,7 +178,8 @@ Content-Type: application/json
   ]
 }
 
-### Einheit nicht im Enum -> 400 (@IsEnum, Meldung nennt ingredients.0.unit)
+### Unit outside the enum -> 400 (the message names ingredients[0].unit)
+### "EL" is the display form, TABLESPOON is what gets stored.
 POST {{host}}/recipes
 Content-Type: application/json
 
@@ -104,8 +191,9 @@ Content-Type: application/json
   ]
 }
 
-
-### servings null -> 400 (@ValidateIf, vorher 500 aus Prisma)
+### servings null -> 400
+### The field may be omitted but must not be null: null would violate the
+### NOT NULL column and end as a 500.
 POST {{host}}/recipes
 Content-Type: application/json
 
@@ -118,20 +206,21 @@ Content-Type: application/json
   ]
 }
 
-### servings gesetzt -> 201 mit servings 4 (ohne das Feld greift der DB-Default 2)
+### prepMinutes 0 -> 400 (times are positive or absent altogether)
 POST {{host}}/recipes
 Content-Type: application/json
 
 {
-  "title": "Kartoffelsuppe für vier",
+  "title": "Kartoffelsuppe",
   "instructions": "Kartoffeln schälen …",
-  "servings": 4,
+  "prepMinutes": 0,
   "ingredients": [
-    { "name": "CurcumaC", "amoun", "amount": 1600, "unit": "GRAM" }
+    { "name": "Kartoffeln", "amount": 800, "unit": "GRAM" }
   ]
 }
 
-### amount mit drei Nachkommastellen -> 400 (numeric(8,2) würde still runden)
+### amount with three decimal places -> 400
+### numeric(8,2) would silently round it to 1.50.
 POST {{host}}/recipes
 Content-Type: application/json
 
@@ -143,7 +232,7 @@ Content-Type: application/json
   ]
 }
 
-### amount 0 -> 400 (Untergrenze, Mengen sind positiv)
+### amount 0 -> 400 (amounts are positive; no amount means leaving it out)
 POST {{host}}/recipes
 Content-Type: application/json
 
@@ -157,56 +246,63 @@ Content-Type: application/json
 
 
 ### ───────────── PATCH /recipes/:id ─────────────
-### Platzhalter-id ist unbekannt (-> 404). Für die 200er die id
-### einer Kartoffelsuppe aus der POST-Antwort einsetzen.
+### NestJS only (issue #3). Works on the recipe from "Create a recipe" — send
+### that POST once first.
 
-### Nur Titel ändern -> 200, Zutatenliste bleibt unverändert
-PATCH {{host}}/recipes/01a0902f-0ec5-731a-bc80-d6392f00aaf6
+### Change the title only -> 200
+### A missing ingredients leaves the list untouched.
+PATCH {{host}}/recipes/{{newRecipe.response.body.$.id}}
 Content-Type: application/json
 
 { "title": "Kartoffelcremesuppe" }
 
-### Beschreibung mit null leeren -> 200, description ist danach null
-PATCH {{host}}/recipes/01a0902f-0ec5-731a-bc80-d6392f00aaf6
+### Clear description with null -> 200, description is null afterwards
+### Clearable fields may be null, required ones may not.
+PATCH {{host}}/recipes/{{newRecipe.response.body.$.id}}
 Content-Type: application/json
 
 { "description": null }
 
-### Nur Zutatenliste ersetzen -> 200 (Mehl 2 EL, Pfeffer neu,
-### "Salz nach Geschmack" entfernt, Positionen 1–4; prüfen: ändert sich updated_at?)
-PATCH {{host}}/recipes/01a0903a-bb99-7ba6-ba6f-6bf938ac2518
+### Replace the ingredient list only -> 200
+### Four lines instead of six, positions 1–4, Pfeffer is new, Majoran is gone.
+### The old lines are deleted rather than reconciled, so they come back with new
+### ids. Check here: does updated_at change? Until the trigger migration (issue
+### #9) the service sets the column itself, because a PATCH without recipe fields
+### sends no UPDATE on recipe.
+PATCH {{host}}/recipes/{{newRecipe.response.body.$.id}}
 Content-Type: application/json
 
 {
   "ingredients": [
-    { "name": "Milch", "amount": 800, "unit": "MILLILITER" },
-    { "name": "Mehl", "amount": 2, "unit": "TABLESPOON", "note": "zum Binden" },
-    { "name": "oregano", "amount": 1, "unit": "TEASPOON" },
-    { "name": "Pfeffer", "amount": 1, "unit": "PINCH" }
+    { "name": "Kartoffeln", "amount": 800, "unit": "GRAM" },
+    { "name": "Möhren", "amount": 3, "unit": "PIECE" },
+    { "name": "Gemüsebrühe", "amount": 1, "unit": "LITER" },
+    { "name": "Pfeffer", "amount": 1, "unit": "PINCH", "note": "frisch gemahlen" }
   ]
 }
 
-### title null -> 400 (skipNullProperties: false)
-PATCH {{host}}/recipes/01a0902b-4ee9-78c1-921c-8c87a3ecc923
+### title null -> 400 (required, not clearable)
+PATCH {{host}}/recipes/{{newRecipe.response.body.$.id}}
 Content-Type: application/json
 
 { "title": null }
 
 ### servings null -> 400
-PATCH {{host}}/recipes/01a0902b-4ee9-78c1-921c-8c87a3ecc923
+PATCH {{host}}/recipes/{{newRecipe.response.body.$.id}}
 Content-Type: application/json
 
 { "servings": null }
 
-### Leere Zutatenliste -> 400 (@ArrayNotEmpty, aus dem Create-DTO geerbt)
-PATCH {{host}}/recipes/01a0902b-4ee9-78c1-921c-8c87a3ecc923
+### Empty ingredient list -> 400 (rule inherited from the create DTO)
+PATCH {{host}}/recipes/{{newRecipe.response.body.$.id}}
 Content-Type: application/json
 
 { "ingredients": [] }
 
-### Unbekannte, aber gültige UUID -> 404, und "Testpfeffer"
-### darf danach nicht in ingredient stehen
-PATCH {{host}}/recipes/01a05dfb-c62a-7443-9462-215ebebaf724
+### Unknown but valid UUID -> 404
+### Check afterwards: "Testpfeffer" must not be in ingredient. The recipe is
+### looked up first, the ingredients are resolved only after that.
+PATCH {{host}}/recipes/00000000-0000-7000-8000-000000000000
 Content-Type: application/json
 
 {
@@ -216,7 +312,7 @@ Content-Type: application/json
   ]
 }
 
-### Keine UUID -> 400
+### Not a UUID -> 400
 PATCH {{host}}/recipes/hallo
 Content-Type: application/json
 
@@ -224,45 +320,91 @@ Content-Type: application/json
 
 
 ### ───────────── DELETE /recipes/:id ─────────────
+### NestJS only (issue #4).
 
-### Rezept löschen — id aus der POST-Antwort einsetzen
-### -> 204 ohne Body (zweimal senden: beim zweiten Mal 404)
-DELETE {{host}}/recipes/01a05dfb-c62a-7443-9462-215ebebaf729
+### Create a throwaway recipe to delete -> 201
+# @name throwawayRecipe
+POST {{host}}/recipes
+Content-Type: application/json
 
-### Unbekannte, aber gültige UUID -> 404
-DELETE {{host}}/recipes/01a05dfb-c62a-7443-9462-215ebebaf724
+{
+  "title": "Zum Löschen",
+  "instructions": "Wird gleich wieder gelöscht.",
+  "ingredients": [
+    { "name": "Testzutat", "amount": 1, "unit": "PIECE" }
+  ]
+}
 
-### Keine UUID -> 400
+### Delete the recipe -> 204 without a body (send twice: 404 the second time)
+### Check afterwards: "Testzutat" is still in ingredient. The cascade runs from a
+### recipe to its lines only, never on to the ingredient.
+DELETE {{host}}/recipes/{{throwawayRecipe.response.body.$.id}}
+
+### Unknown but valid UUID -> 404
+DELETE {{host}}/recipes/00000000-0000-7000-8000-000000000000
+
+### Not a UUID -> 400
 DELETE {{host}}/recipes/hallo
 
 
-### ───────────── /ingredients ─────────────
+### ───────────── GET /ingredients ─────────────
 
-### Alle Zutaten (max. 20) -> 200
+### All ingredients, ordered by name, at most 20 -> 200
 GET {{host}}/ingredients
 
-### Suche über nameNormalized, Großschreibung egal: findet Salz -> 200
+### Case does not matter: finds Salz -> 200
+### The search term passes through the same normalisation as the column.
 GET {{host}}/ingredients?search=SALZ
 
-### Zutat anlegen -> 201 (beim zweiten Senden 409)
+### Spaces around the term: finds Salz -> 200
+GET {{host}}/ingredients?search=%20salz%20
+
+### Decomposed umlaut (O + diaeresis): finds Öl -> 200
+### The case ILIKE alone does not solve — NFC normalisation does the work here.
+GET {{host}}/ingredients?search=O%CC%88l
+
+### Search term of spaces only: no filter, same list as without search -> 200
+GET {{host}}/ingredients?search=%20%20
+
+### Search without a hit -> 200 with []
+GET {{host}}/ingredients?search=xyz
+
+
+### ───────────── POST /ingredients ─────────────
+
+### Create an ingredient -> 201 (409 when sent a second time)
 POST {{host}}/ingredients
 Content-Type: application/json
 
 { "name": "Liebstöckel", "defaultUnit": "PIECE" }
 
-### Unbekanntes Feld id -> 400 (forbidNonWhitelisted)
+### An existing ingredient spelled differently -> 409
+### The unique index sits on name_normalized, not on name. "Salz" from the seed
+### and "  SALZ  " are the same row.
 POST {{host}}/ingredients
 Content-Type: application/json
 
-{ "name": "Kurkuma", "id": "abc" }
+{ "name": "  SALZ  " }
 
-### Name nur aus Leerzeichen -> 400 (getrimmt, bevor validiert wird)
+### Ingredient without defaultUnit -> 201 (the field is optional)
+POST {{host}}/ingredients
+Content-Type: application/json
+
+{ "name": "Lorbeerblatt" }
+
+### Name of spaces only -> 400 (trimmed before it is validated)
 POST {{host}}/ingredients
 Content-Type: application/json
 
 { "name": "   " }
 
-### Einheit nicht im Enum -> 400
+### Unknown field id -> 400 (the database assigns the id)
+POST {{host}}/ingredients
+Content-Type: application/json
+
+{ "name": "Kurkuma", "id": "abc" }
+
+### Unit outside the enum -> 400
 POST {{host}}/ingredients
 Content-Type: application/json
 
