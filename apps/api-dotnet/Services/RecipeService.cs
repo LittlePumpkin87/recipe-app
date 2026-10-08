@@ -177,9 +177,9 @@ public class RecipeService(RecipeDbContext recipeDb)
             recipe.Instructions = dto.Instructions;
         }
 
-        if (dto.PrepMinutesGiven)
+        if (dto.TotalMinutesGiven)
         {
-            recipe.Description = dto.Description;
+            recipe.TotalMinutes = dto.TotalMinutes;
         }
 
         if (dto.PrepMinutesGiven)
@@ -210,7 +210,11 @@ public class RecipeService(RecipeDbContext recipeDb)
                 {
                     RecipeId = id,
                     IngredientId = ingredientsByName[IngredientName.Normalize(ingredientLine.Name!)].Id,
-                    Position = index + 1
+                    Position = index + 1,
+                    Amount = ingredientLine.Amount,
+                    Unit = ingredientLine.Unit,
+                    Note = ingredientLine.Note,
+                    GroupLabel = ingredientLine.GroupLabel
                 });
             }
         }
