@@ -42,4 +42,11 @@ public class RecipeController(RecipeService recipeService) : ControllerBase
         var deleted = await _recipes.DeleteAsync(id);
         return deleted ? NoContent() : NotFound();
     }
+
+    [HttpPatch("{id}")]
+    public async Task<ActionResult<RecipeDetailDto>> Update(Guid id, UpdateRecipeDto dto)
+    {
+        var recipe = await _recipes.UpdateAsync(id, dto);
+        return recipe is null ? NotFound() : Ok(recipe);
+    }
 }

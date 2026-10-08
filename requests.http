@@ -4,8 +4,8 @@
 #   3000 = NestJS  (apps/api,        npm run start:dev -w api)
 #   5000 = .NET    (apps/api-dotnet, dotnet run)
 #
-# Not built on both sides yet: PATCH exists in NestJS only (issue #3). On port
-# 5000 the route answers 405 until then — it knows GET and DELETE only.
+# All seven endpoints exist on both sides. Where an answer differs on purpose,
+# the request below says so.
 #
 # The status code is the contract, the error body is not: Nest sends
 # { statusCode, message, error }, ASP.NET Core sends RFC 9457 ProblemDetails.
