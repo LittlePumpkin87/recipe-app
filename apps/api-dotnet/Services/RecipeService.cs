@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RecipeApi.Data;
 using RecipeApi.Dtos;
@@ -150,6 +149,76 @@ public class RecipeService(RecipeDbContext recipeDb)
         .ExecuteDeleteAsync();
 
         return deleted == 1;
+    }
+
+    public async Task<RecipeDetailDto?> UpdateAsync(Guid id, UpdateRecipeDto dto)
+    {
+        var recipe = await _db.Recipes
+        .FirstOrDefaultAsync(recipe => recipe.Id == id);
+        if (recipe is null)
+        {
+            return null;
+        }
+
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+
+        if (dto.Title is not null)
+        {
+            recipe.Title = dto.Title;
+        }
+
+        if (dto.DescriptionGiven)
+        {
+            recipe.Description = dto.Description;
+        }
+
+        if (dto.Instructions is not null)
+        {
+            recipe.Instructions = dto.Instructions;
+        }
+
+        if (dto.PrepMinutesGiven)
+        {
+            recipe.Description = dto.Description;
+        }
+
+        if (dto.PrepMinutesGiven)
+        {
+            recipe.PrepMinutes = dto.PrepMinutes;
+        }
+
+        if (dto.Servings is not null)
+        {
+            recipe.Servings = (int)dto.Servings;
+        }
+
+        recipe.UpdatedAt = DateTime.UtcNow;
+
+        if (dto.Ingredients is not null)
+        {
+            var ingredientsByName = await ResolveIngredientsAsync(dto.Ingredients);
+            await _db.SaveChangesAsync();
+
+            await _db.RecipeIngredients
+            .Where(recipeIngredient => recipeIngredient.RecipeId == id)
+            .ExecuteDeleteAsync();
+
+            for (var index = 0; index < dto.Ingredients.Count; index++)
+            {
+                var ingredientLine = dto.Ingredients[index];
+                _db.RecipeIngredients.Add(new RecipeIngredient
+                {
+                    RecipeId = id,
+                    IngredientId = ingredientsByName[IngredientName.Normalize(ingredientLine.Name!)].Id,
+                    Position = index + 1
+                });
+            }
+        }
+
+        await _db.SaveChangesAsync();
+        await transaction.CommitAsync();
+
+        return await GetByIdAsync(id);
     }
 }
 
