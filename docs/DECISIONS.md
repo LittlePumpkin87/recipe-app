@@ -562,6 +562,54 @@ inside the same statement. Which is what makes the missing transaction correct r
 than merely convenient: one statement is always all or nothing. See
 [`DELETE /recipes/:id`](../README.md#delete-recipesid-one-statement-no-transaction).
 
+**There is no `PartialType` in C#, so `UpdateRecipeDto` is written out.** Nest derives
+its update DTO from the create DTO and relaxes it; C# cannot, because validation rules
+are attributes — static metadata on the compiled type — and a derived class has no way
+to remove the `[Required]` it inherits. The attributes are therefore repeated. What is
+not repeated is the ingredient line: `Ingredients` is a `List<CreateRecipeIngredientDto>?`,
+because a present list replaces the old one whole and a line is never half-updated.
+
+**A field has three states, and `System.Text.Json` only shows two.** Missing means
+"leave it", `null` means "clear it" on a nullable column and is a 400 on a `NOT NULL`
+one. Both arrive in the DTO as `null`; what separates them is whether the setter ran at
+all, since the serialiser calls it only for a member present in the JSON. Every property
+therefore records that it was written, the way `CreateRecipeDto.Servings` already did for
+one field (see [Validation](#validation)) — and where the flag lives follows from who
+reads it. `Title`, `Instructions`, `Servings` and `Ingredients` keep a private field,
+read only by `Validate`, which turns an explicit `null` into a 400; by the time the
+service runs, `null` can only mean "absent" and a plain `is not null` suffices.
+`Description`, `PrepMinutes` and `TotalMinutes` expose a `public bool …Given { get;
+private set; }` instead, because there `null` survives validation on purpose and only the
+flag can tell the service whether to clear the column.
+
+`[MinLength(1)]` carries the rest: on a `string` it rejects `""` while letting `null`
+through, which is exactly the split needed — the empty string is wrong at every field,
+`null` is a question `Validate` answers per column.
+
+**EF Core's change tracker is the counterpart to Prisma's `undefined`.** The update path
+loads the entity, assigns only the fields the request carried, and lets
+`SaveChangesAsync` work out the `UPDATE`; the generated statement names the changed
+columns only. One consequence has no Prisma equivalent: assigning the value a column
+already holds is not a change, so a request that alters nothing would produce no
+statement at all. `UpdatedAt = DateTime.UtcNow` is therefore set unconditionally, which
+also covers the reason the Nest side sets it by hand — `@updatedAt` is Prisma client
+behaviour with nothing matching it in EF Core. `UtcNow`, not `Now`: the column is
+`timestamptz` and Npgsql expects `Kind = Utc`.
+
+**The recipe is loaded before anything is resolved.** An unknown id has to answer 404
+without writing, and the ingredient lines of that same request must not reach the
+`ingredient` table — `requests.http` checks exactly that, with a line named
+"Testpfeffer". Loading first also means the explicit transaction opens only after the
+row is known to exist, so a 404 starts none.
+
+**Replacing the ingredient list needs the transaction that `POST` could have done
+without.** Two `SaveChangesAsync` and one `ExecuteDeleteAsync` run in sequence: resolve
+the names and save, so new ingredients get their ids from Postgres; delete the recipe's
+join rows; queue the new ones with `position` from the index. Without the outer
+transaction, deleted old rows and unwritten new ones would be a state a reader could
+observe. The delete runs as one statement and never loads the rows, which is also what
+keeps the change tracker honest — it cannot hold children it was never given.
+
 **A 204 is typed as `ActionResult`, without a `T`.** `ActionResult<RecipeDetailDto>`
 compiles — `NoContent()` and `NotFound()` convert to it implicitly — and it would be a
 promise the method never keeps, since neither answer carries a body. The signature is

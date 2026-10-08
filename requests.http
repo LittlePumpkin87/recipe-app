@@ -246,7 +246,7 @@ Content-Type: application/json
 
 
 ### ───────────── PATCH /recipes/:id ─────────────
-### NestJS only (issue #3). Works on the recipe from "Create a recipe" — send
+### Works on the recipe from "Create a recipe" — send
 ### that POST once first.
 
 ### Change the title only -> 200
@@ -255,6 +255,22 @@ PATCH {{host}}/recipes/{{newRecipe.response.body.$.id}}
 Content-Type: application/json
 
 { "title": "Kartoffelcremesuppe" }
+
+### Clear both times with null -> 200, prepMinutes and totalMinutes are null
+### Three fields are clearable and each carries its own flag, so each one can be
+### wired up wrongly on its own. Check afterwards that description, which is not
+### in this request, still holds the text from the POST.
+PATCH {{host}}/recipes/{{newRecipe.response.body.$.id}}
+Content-Type: application/json
+
+{ "prepMinutes": null, "totalMinutes": null }
+
+### Set one time without touching the other -> 200
+### prepMinutes is 25 afterwards, totalMinutes stays null.
+PATCH {{host}}/recipes/{{newRecipe.response.body.$.id}}
+Content-Type: application/json
+
+{ "prepMinutes": 25 }
 
 ### Clear description with null -> 200, description is null afterwards
 ### Clearable fields may be null, required ones may not.

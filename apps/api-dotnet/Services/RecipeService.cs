@@ -8,8 +8,8 @@ namespace RecipeApi.Services;
 
 /// <summary>
 /// The only place a recipe query may live. Reads project straight into DTOs and answer
-/// <c>null</c> rather than throwing; the write path saves twice, so every step of it has
-/// to stay inside the transaction <see cref="CreateAsync"/> opens.
+/// <c>null</c> rather than throwing; the two write paths that save more than once open a
+/// transaction of their own, so every step of them stays inside it.
 /// </summary>
 public class RecipeService(RecipeDbContext recipeDb)
 {
@@ -151,6 +151,13 @@ public class RecipeService(RecipeDbContext recipeDb)
         return deleted == 1;
     }
 
+    /// <summary>
+    /// Applies only the fields the request carried. Which test decides that differs by
+    /// column: for a <c>NOT NULL</c> one an explicit <c>null</c> was already refused by
+    /// <c>Validate</c>, so <c>null</c> can only mean "absent"; for a nullable one it means
+    /// "clear it", and only the DTO's <c>…Given</c> flag tells the two apart. The recipe is
+    /// loaded first so that an unknown id answers 404 before an ingredient is resolved.
+    /// </summary>
     public async Task<RecipeDetailDto?> UpdateAsync(Guid id, UpdateRecipeDto dto)
     {
         var recipe = await _db.Recipes
