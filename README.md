@@ -483,7 +483,7 @@ the same contract; the two columns track how far the second one has got.
 | GET | `/recipes/:id` | Single recipe including its ingredients | built | built |
 | POST | `/recipes` | Create, including the ingredient list | built | built |
 | PATCH | `/recipes/:id` | Update; a present ingredient list replaces the old one | built | — |
-| DELETE | `/recipes/:id` | Delete, `204` without a body | built | — |
+| DELETE | `/recipes/:id` | Delete, `204` without a body | built | built |
 | GET | `/ingredients` | Autocomplete, `?search=`, capped at 20 results | built | built |
 | POST | `/ingredients` | Create an ingredient, 409 if the name exists | built | built |
 

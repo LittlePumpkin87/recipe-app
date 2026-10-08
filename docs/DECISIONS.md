@@ -546,6 +546,28 @@ them. The values parse equal, the bytes differ. Aligning it would mean a convert
 whose only job is to drop information, which is not worth it for a figure every client
 reads as a number.
 
+**`DELETE` deletes without loading, and the row count is the answer.** The usual EF Core
+way to remove something is to load it, call `Remove` and let `SaveChangesAsync` work out
+what to write — a `SELECT` followed by a `DELETE` to learn something the `DELETE` already
+knows. `ExecuteDeleteAsync` sends the statement straight away and returns the number of
+rows it hit. Filtered on the primary key that number is 0 or 1, which is exactly the
+distinction the endpoint needs, and it is the counterpart to Prisma raising `P2025` on
+the Nest side. Nothing is queued, so there is no `SaveChangesAsync` after it; a call
+there would find no tracked change and do nothing.
+
+That the join rows go too is therefore entirely the database's doing. EF Core can
+replay a cascade in memory for entities it has loaded, and here it has loaded none —
+what removes the `recipe_ingredient` rows is `ON DELETE CASCADE` on the foreign key,
+inside the same statement. Which is what makes the missing transaction correct rather
+than merely convenient: one statement is always all or nothing. See
+[`DELETE /recipes/:id`](../README.md#delete-recipesid-one-statement-no-transaction).
+
+**A 204 is typed as `ActionResult`, without a `T`.** `ActionResult<RecipeDetailDto>`
+compiles — `NoContent()` and `NotFound()` convert to it implicitly — and it would be a
+promise the method never keeps, since neither answer carries a body. The signature is
+not only documentation here: `MapOpenApi` derives the API description from it, so the
+`T` would advertise a response schema no client ever receives.
+
 ### Validation
 
 Decided 2026-09-24. The Nest API validates with `class-validator`, which Nest

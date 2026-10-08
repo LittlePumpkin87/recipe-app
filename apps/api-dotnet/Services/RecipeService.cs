@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RecipeApi.Data;
 using RecipeApi.Dtos;
@@ -136,6 +137,15 @@ public class RecipeService(RecipeDbContext recipeDb)
         await transaction.CommitAsync();
 
         return (await GetByIdAsync(recipe.Id))!;
+    }
+
+    public async Task<bool> DeleteAsync(Guid id)
+    {
+        var deleted = await _db.Recipes
+        .Where(recipes => recipes.Id == id)
+        .ExecuteDeleteAsync();
+
+        return deleted == 1;
     }
 }
 
