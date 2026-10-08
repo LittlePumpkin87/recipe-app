@@ -8,11 +8,11 @@ public partial class RecipeDbContext
     partial void OnModelCreatingPartial(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<RecipeIngredient>()
-            .Property(e => e.Unit)
+            .Property(recipeIngredient => recipeIngredient.Unit)
             .HasColumnName("unit");
 
         modelBuilder.Entity<Ingredient>()
-            .Property(e => e.DefaultUnit)
+            .Property(ingredient => ingredient.DefaultUnit)
             .HasColumnName("default_unit");
     }
 }

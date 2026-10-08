@@ -8,16 +8,16 @@ existing ingredient, POST creates a new one and answers 409 if it exists after
 all. */
 @Controller('ingredients')
 export class IngredientsController {
-  constructor(private readonly ingredientService: IngredientsService) { }
+  constructor(private readonly ingredientsService: IngredientsService) { }
 
   @Get()
   findAll(@Query('search') search?: string): Promise<IngredientDto[]> {
-    return this.ingredientService.findAll(search);
+    return this.ingredientsService.findAll(search);
   }
 
   @Post()
   create(@Body() dto: CreateIngredientDto): Promise<IngredientDto> {
-    return this.ingredientService.create(dto);
+    return this.ingredientsService.create(dto);
   }
 
 }

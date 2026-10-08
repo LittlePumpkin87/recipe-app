@@ -17,14 +17,14 @@ public sealed class MaxDecimalPlacesAttribute(int maxDecimalPlaces) : Validation
         {
             return ValidationResult.Success;
         }
-        if (value is not decimal amount)
+        if (value is not decimal decimalValue)
         {
             return new ValidationResult(
                 $"{validationContext.DisplayName} must be a decimal number.",
                 [validationContext.MemberName!]
             );
         }
-        if (Math.Round(amount, _maxDecimalPlaces) != amount)
+        if (Math.Round(decimalValue, _maxDecimalPlaces) != decimalValue)
         {
             return new ValidationResult(
                 $"{validationContext.DisplayName} must have at most {_maxDecimalPlaces} decimal places.",

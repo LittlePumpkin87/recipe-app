@@ -22,29 +22,29 @@ type Recipe = Prisma.RecipeGetPayload<{
 and moves up; `amount` leaves Prisma as a Decimal object, which would serialise
 to a quoted string. The row's own `id` and `recipeId` are dropped on purpose —
 neither means anything outside the database. */
-function toRecipeIngredient(line: Recipe['recipeIngredients'][number],
+function toRecipeIngredient(recipeIngredient: Recipe['recipeIngredients'][number],
 ): RecipeIngredientDto {
     return {
-        ingredientId: line.ingredientId,
-        name: line.ingredient.name,
-        amount: line.amount === null ? null : line.amount.toNumber(),
-        unit: line.unit,
-        note: line.note,
-        groupLabel: line.groupLabel,
-        position: line.position,
+        ingredientId: recipeIngredient.ingredientId,
+        name: recipeIngredient.ingredient.name,
+        amount: recipeIngredient.amount === null ? null : recipeIngredient.amount.toNumber(),
+        unit: recipeIngredient.unit,
+        note: recipeIngredient.note,
+        groupLabel: recipeIngredient.groupLabel,
+        position: recipeIngredient.position,
     };
 }
 
-export function toRecipeDetail(item: Recipe): RecipeDetailDto {
+export function toRecipeDetail(recipe: Recipe): RecipeDetailDto {
     return {
-        description: item.description,
-        instructions: item.instructions,
-        id: item.id,
-        title: item.title,
-        servings: item.servings,
-        prepMinutes: item.prepMinutes,
-        totalMinutes: item.totalMinutes,
-        ingredients: item.recipeIngredients.map(toRecipeIngredient),
+        description: recipe.description,
+        instructions: recipe.instructions,
+        id: recipe.id,
+        title: recipe.title,
+        servings: recipe.servings,
+        prepMinutes: recipe.prepMinutes,
+        totalMinutes: recipe.totalMinutes,
+        ingredients: recipe.recipeIngredients.map(toRecipeIngredient),
     }
 }
 
@@ -61,12 +61,12 @@ type RecipeListItem = Prisma.RecipeGetPayload<{
 }>;
 
 
-export function toRecipeListItem(item: RecipeListItem): RecipeListItemDto {
+export function toRecipeListItem(recipe: RecipeListItem): RecipeListItemDto {
     return {
-        id: item.id,
-        title: item.title,
-        servings: item.servings,
-        prepMinutes: item.prepMinutes,
-        totalMinutes: item.totalMinutes,
+        id: recipe.id,
+        title: recipe.title,
+        servings: recipe.servings,
+        prepMinutes: recipe.prepMinutes,
+        totalMinutes: recipe.totalMinutes,
     }
 }

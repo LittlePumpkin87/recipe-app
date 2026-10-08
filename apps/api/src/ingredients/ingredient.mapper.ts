@@ -16,11 +16,11 @@ type IngredientItem = Prisma.IngredientGetPayload<{
     select: typeof ingredientSelect;
 }>;
 
-export function toIngredient(line: IngredientItem
+export function toIngredient(ingredient: IngredientItem
 ): IngredientDto {
     return {
-        name: line.name,
-        defaultUnit: line.defaultUnit,
-        id: line.id
+        name: ingredient.name,
+        defaultUnit: ingredient.defaultUnit,
+        id: ingredient.id
     };
 }

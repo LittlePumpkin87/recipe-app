@@ -42,24 +42,28 @@ export class RecipesService {
   /** Finds or creates each ingredient by normalized name and returns the ids,
   keyed by that name. Takes the caller's `transactionClient`, so ingredients
   created here are rolled back with the rest; a name that appears twice in the
-  list is looked up once. */
+  list is looked up once.
+
+  Three things are called "ingredient" around here and each has its own word: an
+  `ingredientLine` is what the request sent, an `ingredient` is the row in the
+  table, and a `recipeIngredient` is the link between a recipe and one of them. */
   private async resolveIngredientIds(
     transactionClient: Prisma.TransactionClient,
-    recipeIngredients: CreateRecipeIngredientDto[],
+    ingredientLines: CreateRecipeIngredientDto[],
   ): Promise<Map<string, string>> {
     const ingredientIds = new Map<string, string>();
 
-    for (const item of recipeIngredients) {
-      const key = normalizeIngredientName(item.name);
-      if (ingredientIds.has(key)) {
+    for (const ingredientLine of ingredientLines) {
+      const normalizedName = normalizeIngredientName(ingredientLine.name);
+      if (ingredientIds.has(normalizedName)) {
         continue;
       }
       const ingredient = await transactionClient.ingredient.upsert({
-        where: { nameNormalized: key },
+        where: { nameNormalized: normalizedName },
         update: {},
-        create: { name: item.name, nameNormalized: key },
+        create: { name: ingredientLine.name, nameNormalized: normalizedName },
       });
-      ingredientIds.set(key, ingredient.id);
+      ingredientIds.set(normalizedName, ingredient.id);
     }
     return ingredientIds;
   }
@@ -79,13 +83,13 @@ export class RecipesService {
           prepMinutes: dto.prepMinutes,
           totalMinutes: dto.totalMinutes,
           recipeIngredients: {
-            create: dto.ingredients.map((item, index) => ({
-              ingredientId: ingredientIds.get(normalizeIngredientName(item.name))!,
+            create: dto.ingredients.map((ingredientLine, index) => ({
+              ingredientId: ingredientIds.get(normalizeIngredientName(ingredientLine.name))!,
               position: index + 1,
-              amount: item.amount,
-              groupLabel: item.groupLabel,
-              unit: item.unit,
-              note: item.note,
+              amount: ingredientLine.amount,
+              groupLabel: ingredientLine.groupLabel,
+              unit: ingredientLine.unit,
+              note: ingredientLine.note,
             })),
           },
         },
@@ -122,14 +126,14 @@ export class RecipesService {
           const ingredientIds = await this.resolveIngredientIds(transactionClient, dto.ingredients);
           await transactionClient.recipeIngredient.deleteMany({ where: { recipeId: id } });
           await transactionClient.recipeIngredient.createMany({
-            data: dto.ingredients.map((item, index) => ({
+            data: dto.ingredients.map((ingredientLine, index) => ({
               recipeId: id,
-              ingredientId: ingredientIds.get(normalizeIngredientName(item.name))!,
+              ingredientId: ingredientIds.get(normalizeIngredientName(ingredientLine.name))!,
               position: index + 1,
-              note: item.note,
-              amount: item.amount,
-              unit: item.unit,
-              groupLabel: item.groupLabel
+              note: ingredientLine.note,
+              amount: ingredientLine.amount,
+              unit: ingredientLine.unit,
+              groupLabel: ingredientLine.groupLabel
             })),
           });
         }

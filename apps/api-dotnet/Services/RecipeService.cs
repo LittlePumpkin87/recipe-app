@@ -18,20 +18,20 @@ public class RecipeService(RecipeDbContext recipeDb)
 
     public async Task<IReadOnlyList<RecipeListItemDto>> GetAllAsync(string? search)
     {
-        var term = search?.Trim();
+        var searchTerm = search?.Trim();
         IQueryable<Recipe> query = _db.Recipes;
-        if (!string.IsNullOrEmpty(term))
+        if (!string.IsNullOrEmpty(searchTerm))
         {
-            query = query.Where(r => EF.Functions.ILike(r.Title, $"%{term}%"));
+            query = query.Where(recipe => EF.Functions.ILike(recipe.Title, $"%{searchTerm}%"));
         }
         return await query
-            .OrderBy(r => r.Title)
-            .Select(r => new RecipeListItemDto(
-                r.Id,
-                r.Title,
-                r.Servings,
-                r.PrepMinutes,
-                r.TotalMinutes
+            .OrderBy(recipe => recipe.Title)
+            .Select(recipe => new RecipeListItemDto(
+                recipe.Id,
+                recipe.Title,
+                recipe.Servings,
+                recipe.PrepMinutes,
+                recipe.TotalMinutes
             )).ToListAsync();
     }
 
@@ -39,25 +39,25 @@ public class RecipeService(RecipeDbContext recipeDb)
     public async Task<RecipeDetailDto?> GetByIdAsync(Guid id)
     {
         return await _db.Recipes
-            .Where(r => r.Id == id)
-            .Select(r => new RecipeDetailDto(
-                r.Id,
-                r.Title,
-                r.Servings,
-                r.PrepMinutes,
-                r.TotalMinutes,
-                r.Description,
-                r.Instructions,
-                r.RecipeIngredients
-                        .OrderBy(i => i.Position)
-                        .Select(i => new RecipeIngredientDto(
-                         i.IngredientId,
-                        i.Ingredient.Name,
-                        i.Amount,
-                        i.Unit,
-                        i.Note,
-                        i.GroupLabel,
-                        i.Position))
+            .Where(recipe => recipe.Id == id)
+            .Select(recipe => new RecipeDetailDto(
+                recipe.Id,
+                recipe.Title,
+                recipe.Servings,
+                recipe.PrepMinutes,
+                recipe.TotalMinutes,
+                recipe.Description,
+                recipe.Instructions,
+                recipe.RecipeIngredients
+                        .OrderBy(recipeIngredient => recipeIngredient.Position)
+                        .Select(recipeIngredient => new RecipeIngredientDto(
+                            recipeIngredient.IngredientId,
+                            recipeIngredient.Ingredient.Name,
+                            recipeIngredient.Amount,
+                            recipeIngredient.Unit,
+                            recipeIngredient.Note,
+                            recipeIngredient.GroupLabel,
+                            recipeIngredient.Position))
                     .ToList()))
             .FirstOrDefaultAsync();
     }
@@ -66,6 +66,10 @@ public class RecipeService(RecipeDbContext recipeDb)
     /// Finds or creates an ingredient per line, keyed by its normalised name. Nothing is
     /// written here — new rows are only queued, and the caller's <c>SaveChangesAsync</c>
     /// decides when they reach the database.
+    /// <para>Three things are called "ingredient" around here and each has its own word:
+    /// an <c>ingredientLine</c> is what the request sent, an <c>ingredient</c> is the row
+    /// in the table, and a <c>recipeIngredient</c> is the link between a recipe and
+    /// one of them.</para>
     /// </summary>
     private async Task<Dictionary<string, Ingredient>> ResolveIngredientsAsync(
     IReadOnlyList<CreateRecipeIngredientDto> ingredientLines)
@@ -142,11 +146,10 @@ public class RecipeService(RecipeDbContext recipeDb)
     public async Task<bool> DeleteAsync(Guid id)
     {
         var deleted = await _db.Recipes
-        .Where(recipes => recipes.Id == id)
+        .Where(recipe => recipe.Id == id)
         .ExecuteDeleteAsync();
 
         return deleted == 1;
     }
 }
-
 

@@ -19,19 +19,20 @@ public class IngredientService(RecipeDbContext recipeDb)
 
     public async Task<IReadOnlyList<IngredientDto>> GetAllAsync(string? search)
     {
-        var term = IngredientName.Normalize(search ?? string.Empty);
+        var normalizedSearch = IngredientName.Normalize(search ?? string.Empty);
         IQueryable<Ingredient> query = _db.Ingredients;
-        if (!string.IsNullOrEmpty(term))
+        if (!string.IsNullOrEmpty(normalizedSearch))
         {
-            query = query.Where(i => EF.Functions.Like(i.NameNormalized, $"%{term}%"));
+            query = query.Where(ingredient =>
+                EF.Functions.Like(ingredient.NameNormalized, $"%{normalizedSearch}%"));
         }
         return await query
-        .OrderBy(i => i.Name)
+        .OrderBy(ingredient => ingredient.Name)
         .Take(20)
-        .Select(i => new IngredientDto(
-            i.Id,
-            i.Name,
-            i.DefaultUnit
+        .Select(ingredient => new IngredientDto(
+            ingredient.Id,
+            ingredient.Name,
+            ingredient.DefaultUnit
         )).ToListAsync();
     }
 
@@ -54,10 +55,10 @@ public class IngredientService(RecipeDbContext recipeDb)
         {
             await _db.SaveChangesAsync();
         }
-        catch (DbUpdateException ex)
-            when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        catch (DbUpdateException exception)
+            when (exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
-            throw new ConflictException($"An ingredient with the name \"{dto.Name}\" already exists", ex);
+            throw new ConflictException($"An ingredient with the name \"{dto.Name}\" already exists", exception);
         }
 
         return new IngredientDto(ingredient.Id, ingredient.Name, ingredient.DefaultUnit);

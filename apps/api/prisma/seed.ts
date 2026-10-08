@@ -113,44 +113,44 @@ async function clearTables(transactionClient: Prisma.TransactionClient): Promise
 
 async function seedIngredients(
     transactionClient: Prisma.TransactionClient,
-    data: SeedRecipe[],
+    seedData: SeedRecipe[],
 ): Promise<Map<string, string>> {
-    const unique = new Map<string, SeedIngredientLine>();
+    const uniqueLines = new Map<string, SeedIngredientLine>();
 
-    for (const recipe of data) {
-        for (const line of recipe.ingredients) {
-            const key = normalizeIngredientName(line.name);
-            if (!unique.has(key)) {
-                unique.set(key, line);
+    for (const recipe of seedData) {
+        for (const ingredientLine of recipe.ingredients) {
+            const normalizedName = normalizeIngredientName(ingredientLine.name);
+            if (!uniqueLines.has(normalizedName)) {
+                uniqueLines.set(normalizedName, ingredientLine);
             }
         }
     }
 
-    const ids = new Map<string, string>();
+    const ingredientIds = new Map<string, string>();
 
-    for (const [key, line] of unique) {
+    for (const [normalizedName, ingredientLine] of uniqueLines) {
         const ingredient = await transactionClient.ingredient.upsert({
-            where: { nameNormalized: key },
+            where: { nameNormalized: normalizedName },
             update: {},
             create: {
-                name: line.name.trim(),
-                nameNormalized: key,
-                defaultUnit: line.defaultUnit,
+                name: ingredientLine.name.trim(),
+                nameNormalized: normalizedName,
+                defaultUnit: ingredientLine.defaultUnit,
             },
         });
 
-        ids.set(key, ingredient.id);
+        ingredientIds.set(normalizedName, ingredient.id);
     }
 
-    return ids;
+    return ingredientIds;
 }
 
 async function seedRecipes(
     transactionClient: Prisma.TransactionClient,
-    data: SeedRecipe[],
+    seedData: SeedRecipe[],
     ingredientIds: Map<string, string>,
 ): Promise<void> {
-    for (const recipe of data) {
+    for (const recipe of seedData) {
         await transactionClient.recipe.create({
             data: {
                 title: recipe.title,
@@ -159,21 +159,21 @@ async function seedRecipes(
                 servings: recipe.servings,
                 prepMinutes: recipe.prepMinutes,
                 recipeIngredients: {
-                    create: recipe.ingredients.map((line, index) => {
-                        const key = normalizeIngredientName(line.name);
-                        const ingredientId = ingredientIds.get(key);
+                    create: recipe.ingredients.map((ingredientLine, index) => {
+                        const normalizedName = normalizeIngredientName(ingredientLine.name);
+                        const ingredientId = ingredientIds.get(normalizedName);
 
                         if (!ingredientId) {
-                            throw new Error(`No ingredient row for "${key}".`);
+                            throw new Error(`No ingredient row for "${normalizedName}".`);
                         }
 
                         return {
                             ingredientId,
                             position: index + 1,
-                            amount: line.amount,
-                            unit: line.unit,
-                            note: line.note,
-                            groupLabel: line.groupLabel,
+                            amount: ingredientLine.amount,
+                            unit: ingredientLine.unit,
+                            note: ingredientLine.note,
+                            groupLabel: ingredientLine.groupLabel,
                         };
                     }),
                 },
@@ -197,8 +197,8 @@ async function main(): Promise<void> {
 }
 
 main()
-    .catch((e) => {
-        console.error(e);
+    .catch((error) => {
+        console.error(error);
         process.exit(1);
     })
     .finally(async () => {

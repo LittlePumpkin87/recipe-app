@@ -19,10 +19,10 @@ export class IngredientsService {
 
 
   async findAll(search?: string): Promise<IngredientDto[]> {
-    const searchTerm = normalizeIngredientName(search ?? "")
+    const normalizedSearch = normalizeIngredientName(search ?? "")
     const ingredients = await this.prisma.ingredient.findMany({
       where: {
-        nameNormalized: searchTerm ? { contains: searchTerm } : undefined
+        nameNormalized: normalizedSearch ? { contains: normalizedSearch } : undefined
       },
       select: ingredientSelect,
       orderBy: { name: 'asc' },
@@ -47,7 +47,7 @@ export class IngredientsService {
       return toIngredient(ingredient);
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        throw new ConflictException(`An ingredient with the name "${dto.name}" allready exists`);
+        throw new ConflictException(`An ingredient with the name "${dto.name}" already exists`);
       }
       throw error;
     }
