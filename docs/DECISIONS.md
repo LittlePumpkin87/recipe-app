@@ -146,22 +146,39 @@ change still starts in `schema.prisma`.
 
 Three things the two backends have to agree on that the database does not
 enforce today. Two of them were settled on 15 September 2026, before the .NET
-work started; neither is built yet.
+work started; the first of them has since been built.
 
-- **`updatedAt` — decided: two database triggers.** `@updatedAt` is Prisma
+- **`updatedAt` — two database triggers, built on 12 October 2026** in migration
+  `20261012080553_updated_at_triggers`. `@updatedAt` is Prisma
   client behaviour, not a database default (see
   [Prisma Studio](../README.md#prisma-studio)). EF Core knows nothing about it, so a second
   backend would have to carry the same rule a second time, and edited recipes
-  would otherwise keep their creation timestamp. The rule moves into the
+  would otherwise keep their creation timestamp. The rule lives in the
   database instead: a `BEFORE UPDATE` trigger on `recipe` sets
   `NEW.updated_at = now()`, and an `AFTER INSERT/UPDATE/DELETE` trigger on
   `recipe_ingredient` sets the column on the parent recipe. The second trigger
   is what makes the rule complete. An update carrying only the ingredient list
   sends no `UPDATE` for the recipe at all, so a trigger on `recipe` alone would
   miss exactly the case that prompted the question (see the PATCH section).
-  A trigger cannot be expressed in `schema.prisma`; it arrives as hand-written
-  SQL in a migration created with `--create-only`. Until then both backends
-  keep setting the column themselves.
+  A trigger cannot be expressed in `schema.prisma`, so the SQL was written by
+  hand into a migration created with `--create-only`; both backends then dropped
+  their own assignment.
+
+  Four details of the SQL are worth keeping. The child trigger reads `OLD` on a
+  `DELETE` and `NEW` otherwise, because only one of the two exists per
+  operation — reading `NEW` alone would break exactly the deletion half of a
+  `PATCH`, which replaces the list. `now()` is the transaction's start time, not
+  the wall clock, so every row a single `PATCH` touches yields one timestamp
+  instead of several; `clock_timestamp()` would be the other choice and is not
+  wanted here. The child trigger's `UPDATE` on `recipe` fires the parent trigger,
+  which only modifies `NEW` and issues no further statement, so the chain ends
+  after two steps. And on `DELETE /recipes/{id}` the parent row is gone before
+  the cascade reaches the children, so the child trigger's `UPDATE` matches
+  nothing and does no harm.
+
+  One case is deliberately not covered: an `UPDATE` moving a `recipe_ingredient`
+  row from one recipe to another would have to touch both parents. `PATCH`
+  replaces the list as a whole, so a row is never reassigned.
 - **Name normalization — decided: one implementation per language, one shared
   set of test cases.** The rule that `normalizeIngredientName` exists in exactly
   one place cannot hold across two languages. A C# version that skipped NFC
@@ -590,11 +607,18 @@ through, which is exactly the split needed — the empty string is wrong at ever
 loads the entity, assigns only the fields the request carried, and lets
 `SaveChangesAsync` work out the `UPDATE`; the generated statement names the changed
 columns only. One consequence has no Prisma equivalent: assigning the value a column
-already holds is not a change, so a request that alters nothing would produce no
-statement at all. `UpdatedAt = DateTime.UtcNow` is therefore set unconditionally, which
-also covers the reason the Nest side sets it by hand — `@updatedAt` is Prisma client
-behaviour with nothing matching it in EF Core. `UtcNow`, not `Now`: the column is
-`timestamptz` and Npgsql expects `Kind = Utc`.
+already holds is not a change, so a request that alters nothing produces no statement at
+all.
+
+Since 12 October 2026 neither backend sets `updated_at` itself — two triggers own the
+column, see [Second backend](#second-backend-aspnet-core) — and that consequence is the
+one place where the two drift apart. Prisma emits an `UPDATE` even when the values match,
+so the `BEFORE UPDATE` trigger fires and the timestamp advances; EF Core emits nothing and
+it stays. The divergence is confined to a request that changes nothing, it is not
+observable through the API because no response carries `updated_at`, and it is accepted
+rather than papered over: forcing an `UPDATE` in C# would put back the backend-specific
+handling the triggers were built to remove. A request carrying only ingredients is not
+affected — that is the case the second trigger exists for.
 
 **The recipe is loaded before anything is resolved.** An unknown id has to answer 404
 without writing, and the ingredient lines of that same request must not reach the

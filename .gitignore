@@ -14,3 +14,4 @@ npm-debug.log*
 .claude/
 CLAUDE.md
 backup*.sql
+data/

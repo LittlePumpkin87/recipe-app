@@ -199,8 +199,6 @@ public class RecipeService(RecipeDbContext recipeDb)
             recipe.Servings = (int)dto.Servings;
         }
 
-        recipe.UpdatedAt = DateTime.UtcNow;
-
         if (dto.Ingredients is not null)
         {
             var ingredientsByName = await ResolveIngredientsAsync(dto.Ingredients);
