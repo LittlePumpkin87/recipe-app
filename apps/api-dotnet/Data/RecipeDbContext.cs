@@ -22,7 +22,9 @@ public partial class RecipeDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.HasPostgresEnum("unit", new[] { "GRAM", "KILOGRAM", "MILLILITER", "LITER", "PIECE", "CUP", "TABLESPOON", "TEASPOON", "PINCH", "BUNCH", "CLOVE", "SLICE", "PACK", "CAN" });
+        modelBuilder
+            .HasPostgresEnum("language", new[] { "DE", "EN" })
+            .HasPostgresEnum("unit", new[] { "GRAM", "KILOGRAM", "MILLILITER", "LITER", "PIECE", "CUP", "TABLESPOON", "TEASPOON", "PINCH", "BUNCH", "CLOVE", "SLICE", "PACK", "CAN", "OUNCE", "POUND", "PINT", "QUART" });
 
         modelBuilder.Entity<Ingredient>(entity =>
         {

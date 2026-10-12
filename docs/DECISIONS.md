@@ -15,9 +15,55 @@ See also [README.md](../README.md) for setup, data model and API endpoints.
 
 **Units are an enum, not free text.** A string column produces "tbsp", "Tbsp"
 and "tablespoon" as three distinct units, which makes the V2 shopping list
-impossible to aggregate. No conversion happens anywhere — not even grams to
-kilograms; amounts are only ever added up when the unit is identical. That is
-also why `CUP` is harmless despite being defined differently around the world.
+impossible to aggregate.
+
+**Conversion happens inside a family, never across one.** Decided 12 October
+2026; it replaces the earlier rule that nothing was ever converted. Four
+families, every factor exact and whole:
+
+| Family | Units | Factors |
+|---|---|---|
+| metric weight | `GRAM`, `KILOGRAM` | 1 kg = 1000 g |
+| metric volume | `MILLILITER`, `LITER` | 1 l = 1000 ml |
+| imperial weight | `OUNCE`, `POUND` | 1 lb = 16 oz |
+| US volume | `TEASPOON`, `TABLESPOON`, `CUP`, `PINT`, `QUART` | 1 tbsp = 3 tsp, 1 cup = 48 tsp, 1 pint = 96 tsp, 1 quart = 192 tsp |
+
+Nothing crosses between families. Grams to ounces would be exact but mixes
+systems for no gain. Cups to grams is not a conversion at all: a cup of flour
+and a cup of oil weigh differently, so it needs a density per ingredient — which
+is exactly what [Nutrition](#nutrition) stage 2 collects and is expressly barred
+from reaching the shopping list. `PIECE`, `CLOVE`, `SLICE`, `PACK`, `CAN`,
+`PINCH` and `BUNCH` belong to no family; they add up with themselves and with
+nothing else.
+
+The sum is computed in the family's smallest unit, which keeps the arithmetic
+whole, and the unit it is displayed in follows the magnitude: 1500 g reads as
+1.5 kg, 48 tsp as 1 cup. **The recipe itself is never touched.** "1 tablespoon
+salt" stays one tablespoon in `recipe_ingredient` and in the detail view; the
+conversion exists only in the shopping-list aggregation, the same way portion
+scaling is computed and never written back.
+
+`CUP` used to be called harmless *because* nothing was converted. That reasoning
+is gone, and a measurement replaces it: a US tablespoon is 14.79 ml, a German
+one 15 ml. Across the quantities a recipe actually names, that is 0.2 ml per
+spoon — no recipe calls for a hundred of them, so the error never reaches a size
+the shopping list could care about.
+
+What the conversion does *not* fix is the case that prompted it. Salt given in
+grams by one recipe and in teaspoons by another still ends up as two sub-totals,
+because that crossing is volume against weight. The cure for "the same
+ingredient four times" is the grouping, not the arithmetic: every line points at
+the same `ingredient` row, so the list shows one entry with one checkbox and the
+sub-totals underneath.
+
+**A shopping-list row has to distinguish computed from corrected.** The V2 list
+must be editable — a quantity corrected by hand, or removed entirely. Without
+that distinction one of two things happens: recomputing the list overwrites the
+correction, or the correction outlives a recipe change that has long since
+invalidated it. The shape is the one `updated_at` uses: the computed value stays
+derived, and one additional, normally empty column holds the correction. While
+it is `NULL` the arithmetic applies. "Remove the quantity" is then not a special
+case but a correction to *no quantity*.
 
 **Uniqueness sits on `nameNormalized`, not on `name`.** A `@unique` on `name`
 compares byte for byte and would happily store "Zwiebel" next to "zwiebel".
@@ -143,6 +189,17 @@ migration histories changing one database contradict each other. The .NET
 backend therefore reads the existing tables — database first, via
 `dotnet ef dbcontext scaffold` — and never creates a migration. Every schema
 change still starts in `schema.prisma`.
+
+That the schema files live *inside* `apps/api` is packaging, not ownership.
+Moving them to a neutral folder was considered on 12 October 2026 and deferred
+to issues #15 (Docker Compose) and #16 (CI), where a backend-agnostic "apply the
+schema" step is actually needed. It would change nothing about who owns the
+schema — Prisma still would — and it is not free: `output` in `schema.prisma`
+resolves relative to the schema file, so the generated client would have to
+cross a package boundary. Worth knowing until then: Prisma migrations are plain
+SQL files applied in folder order, so a deployment without the Node workspace is
+possible; it only loses the bookkeeping in `_prisma_migrations` that
+`prisma migrate deploy` maintains.
 
 Three things the two backends have to agree on that the database does not
 enforce today. Two of them were settled on 15 September 2026, before the .NET
@@ -301,7 +358,7 @@ Four of those arguments are not cosmetic.
   produces is simply left behind, so a table dropped from the schema leaves its
   class on disk until it is deleted by hand.
 
-**The `unit` columns are hand-written.** A PostgreSQL enum has no CLR type to map
+**The enum columns are hand-written.** A PostgreSQL enum has no CLR type to map
 to, so the scaffolder emits `HasPostgresEnum` for the type itself and then skips
 every column using it:
 
@@ -310,15 +367,21 @@ Enum column 'public.ingredient.default_unit' cannot be scaffolded,
 define a CLR enum type and add the property manually.
 ```
 
-This is a warning, not an error. The build succeeds and two columns are silently
-absent — which is why it is written down here. Three files supply what the
-scaffolder cannot, and none of them is touched by a later `--force`:
+This is a warning, not an error. The build succeeds and three columns are
+silently absent — which is why it is written down here. Four files supply what
+the scaffolder cannot, and none of them is touched by a later `--force`:
 
 | File | Contains |
 |---|---|
 | `Models/Unit.cs` | the C# enum, one `[PgName]` per value |
-| `Models/UnitProperties.cs` | `Ingredient.DefaultUnit` and `RecipeIngredient.Unit` |
-| `Data/RecipeDbContext.Partial.cs` | `HasColumnName` for both |
+| `Models/Language.cs` | the same for `language` |
+| `Models/EnumProperties.cs` | `Ingredient.DefaultUnit`, `RecipeIngredient.Unit` and `Recipe.Language` |
+| `Data/RecipeDbContext.Partial.cs` | `HasColumnName` for all three |
+
+A partial class is merged by **name**, so each class in `EnumProperties.cs` has
+to be spelled exactly like its scaffolded counterpart. A misspelling compiles
+cleanly and silently produces a new, unused class instead of extending the
+entity — nothing warns, and the property is simply missing at runtime.
 
 The `[PgName]` attributes are required rather than decorative. Npgsql translates
 member names to snake_case by default and would look for `gram`, while the values

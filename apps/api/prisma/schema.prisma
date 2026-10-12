@@ -29,8 +29,17 @@ enum Unit {
   SLICE
   PACK
   CAN
-
+  OUNCE
+  POUND
+  PINT
+  QUART
   @@map("unit")
+}
+
+enum Language {
+  DE
+  EN
+  @@map("language")
 }
 
 /** Recipe Model that provides all needed data for a whole recipe */
@@ -39,7 +48,7 @@ model Recipe {
   title        String   @db.VarChar(100)
   description  String?
   instructions String
-  servings     Int      @default(2)
+  servings     Int?     @default(2)
   prepMinutes  Int?     @map("prep_minutes")
   totalMinutes Int?     @map("total_minutes")
   sourceUrl    String?  @map("source_url")
@@ -48,6 +57,7 @@ model Recipe {
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
   recipeIngredients RecipeIngredient[]
+  language Language @default(DE)
 
   @@unique([sourceName, externalId])
   @@map("recipe")

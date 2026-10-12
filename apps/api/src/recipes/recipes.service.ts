@@ -101,15 +101,12 @@ export class RecipesService {
   }
 
   /** Missing fields stay untouched; a present `ingredients` replaces the whole
-  list. `updated_at` is not set here — the triggers from migration
-  `20261012080553_updated_at_triggers` own that column, the second of them
-  because an ingredients-only request leaves `data` empty and no UPDATE on
-  `recipe` would follow. The recipe update still runs first so that an unknown
-  id fails with P2025, a 404, before anything is written — resolving ingredients
-  first would end in a foreign-key error and a 500 instead; Prisma checks the
-  row even when `data` is empty, so an ingredients-only request answers 404 too.
-  The catch wraps the whole transaction: caught inside, the error would let
-  Prisma commit. */
+  list. `updated_at` belongs to the database triggers, not to this method. The
+  recipe update runs first so that an unknown id fails with P2025, a 404, before
+  anything is written; resolving ingredients first would end in a foreign-key
+  error and a 500. Prisma checks the row even when `data` is empty, so an
+  ingredients-only request answers 404 as well. The catch wraps the whole
+  transaction: caught inside, the error would let Prisma commit. */
   async update(id: string, dto: UpdateRecipeDto): Promise<RecipeDetailDto> {
     try {
       const recipe = await this.prisma.$transaction(async (transactionClient) => {

@@ -18,7 +18,12 @@ builder.AddDatabaseConnection();
 builder.Services.AddDbContext<RecipeDbContext>(options =>
     options.UseNpgsql(
         builder.Configuration.GetConnectionString("Default"),
-        npgsql => npgsql.MapEnum<Unit>("unit")));
+        npgsql =>
+        {
+            npgsql.MapEnum<Unit>("unit");
+            npgsql.MapEnum<Language>("language");
+        }
+        ));
 
 
 builder.Services.AddControllers().AddJsonOptions(options =>

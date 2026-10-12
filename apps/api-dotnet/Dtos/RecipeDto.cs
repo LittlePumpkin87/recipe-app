@@ -7,7 +7,7 @@ namespace RecipeApi.Dtos;
 public record RecipeListItemDto(
     Guid Id,
     string Title,
-    int Servings,
+    int? Servings,
     int? PrepMinutes,
     int? TotalMinutes
 );
@@ -15,7 +15,7 @@ public record RecipeListItemDto(
 public record RecipeDetailDto(
     Guid Id,
     string Title,
-    int Servings,
+    int? Servings,
     int? PrepMinutes,
     int? TotalMinutes,
     string? Description,

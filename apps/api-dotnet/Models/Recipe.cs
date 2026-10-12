@@ -13,7 +13,7 @@ public partial class Recipe
 
     public string Instructions { get; set; } = null!;
 
-    public int Servings { get; set; }
+    public int? Servings { get; set; }
 
     public int? PrepMinutes { get; set; }
 

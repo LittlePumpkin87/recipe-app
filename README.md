@@ -169,6 +169,8 @@ This is an npm workspaces monorepo. Application packages live under `apps/`.
 │       ├── Utility/        # UrlExtensions: DATABASE_URL → Npgsql
 │       └── Properties/     # launchSettings.json — local ports only
 ├── .config/                # dotnet-tools.json — pins dotnet-ef
+├── tools/                  # one-off data preparation — see tools/README.md
+├── data/                   # downloaded data sets — gitignored, never committed
 ├── requests.http           # example requests — tests either backend
 ├── docker-compose.yml      # local infrastructure
 ├── global.json             # pins the .NET SDK version
@@ -800,5 +802,6 @@ link will be part of the frontend from the moment one exists.
 | File | Contents |
 |---|---|
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Every design decision, including the alternatives that were rejected and why — data model, the second backend, nutrition, images, multi-user, and the accepted audit findings |
+| [tools/README.md](tools/README.md) | Where imported recipe data comes from, the licence attached to it, and how to reproduce the converted file |
 | [requests.http](requests.http) | Example requests, runnable against either backend |
 | [CLAUDE.md](CLAUDE.md) | Working agreement and project context |
