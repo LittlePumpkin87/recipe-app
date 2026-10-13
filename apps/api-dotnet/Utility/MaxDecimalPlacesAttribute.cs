@@ -3,8 +3,7 @@ using System.ComponentModel.DataAnnotations;
 namespace RecipeApi.Utility;
 
 /// <summary>
-/// Rejects a decimal carrying more decimal places than allowed. Without it
-/// <c>numeric(8,2)</c> would silently round the surplus away on insert.
+/// Rejects a decimal carrying more decimal places than allowed.
 /// </summary>
 [AttributeUsage(AttributeTargets.Property)]
 public sealed class MaxDecimalPlacesAttribute(int maxDecimalPlaces) : ValidationAttribute

@@ -5,8 +5,7 @@ using RecipeApi.Services;
 namespace RecipeApi.Controllers;
 
 /// <summary>
-/// Maps the /recipes endpoints onto <see cref="RecipeService"/> and holds no business
-/// logic.
+/// Maps the /recipes endpoints onto <see cref="RecipeService"/>.
 /// </summary>
 [ApiController]
 [Route("recipes")]

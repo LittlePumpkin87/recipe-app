@@ -2,10 +2,7 @@ import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { IngredientsService } from './ingredients.service';
 import { CreateIngredientDto, IngredientDto } from './dto/ingredient.dto';
 
-/** Maps the /ingredients HTTP endpoints onto IngredientsService. In V1 they
-serve the recipe form: GET feeds the autocomplete that steers users to an
-existing ingredient, POST creates a new one and answers 409 if it exists after
-all. */
+/** Maps the /ingredients endpoints onto IngredientsService. */
 @Controller('ingredients')
 export class IngredientsController {
   constructor(private readonly ingredientsService: IngredientsService) { }

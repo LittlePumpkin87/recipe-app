@@ -4,8 +4,6 @@ using Npgsql;
 
 /// <summary>
 /// Turns the repository's <c>DATABASE_URL</c> into the connection string Npgsql accepts.
-/// Must run before <c>AddDbContext</c> and after <c>DotNetEnv</c> has loaded the
-/// root <c>.env</c>.
 /// </summary>
 public static class UrlExtensions
 {

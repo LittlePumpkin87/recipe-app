@@ -5,13 +5,7 @@ import { ingredientSelect, toIngredient } from './ingredient.mapper';
 import { normalizeIngredientName } from '../common/normalize-name';
 import { Prisma } from '../generated/prisma/client';
 
-/** Business logic for the central ingredient list, and the only place a
-database query for it may live. Every comparison runs against `nameNormalized`
-rather than the display name: that column was written by
-`normalizeIngredientName`, so a search term has to pass through the same
-function before the two can match. It is also why no `mode: 'insensitive'`
-appears in this file — both sides are lowercase by the time they meet. Rows are
-handed to the mapper; a Prisma row must not leave this class. */
+/** Business logic and database queries for the central ingredient list. */
 @Injectable()
 export class IngredientsService {
 
@@ -31,9 +25,7 @@ export class IngredientsService {
     return ingredients.map(toIngredient);
   }
 
-  /** Writes without checking for an existing row first: the unique index on
-  `nameNormalized` decides, and its P2002 becomes a 409. A `findUnique` before
-  the insert would leave a gap in which two requests both see "free". */
+  /** Creates an ingredient; a name that is taken becomes a 409. */
   async create(dto: CreateIngredientDto): Promise<IngredientDto> {
     try {
       const ingredient = await this.prisma.ingredient.create({

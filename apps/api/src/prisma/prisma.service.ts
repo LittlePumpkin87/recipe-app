@@ -3,8 +3,7 @@ import { ConfigService } from "@nestjs/config"
 import { PrismaClient } from "../generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
-/** Provides the Prisma client as a Nest-managed service: one database
-connection for the whole application, opened on start, closed on shutdown. */
+/** The Prisma client as a Nest service, connected on start and closed on shutdown. */
 @Injectable()
 export class PrismaService
     extends PrismaClient

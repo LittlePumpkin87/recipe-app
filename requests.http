@@ -19,8 +19,8 @@
 # The starting point is the seed (npx prisma db seed from apps/api): the recipes
 # Langos and Römertopfbrot, 17 ingredients.
 
-# @host = http://localhost:3000
-@host = http://localhost:5000
+@host = http://localhost:3000
+# @host = http://localhost:5000
 
 
 ### ───────────── GET /recipes ─────────────

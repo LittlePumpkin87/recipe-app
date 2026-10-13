@@ -2,9 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPi
 import { RecipesService } from './recipes.service';
 import { CreateRecipeDto, RecipeDetailDto, RecipeListItemDto, UpdateRecipeDto } from './dto/recipe.dto';
 
-/** Maps the /recipes HTTP endpoints onto RecipesService. Holds no
-business logic: what a recipe is and where it comes from is the service's
-concern, so a change of data source never reaches this file. */
+/** Maps the /recipes endpoints onto RecipesService. */
 @Controller('recipes')
 export class RecipesController {
   constructor(private readonly recipesService: RecipesService) { }

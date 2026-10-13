@@ -9,8 +9,7 @@ using RecipeApi.Utility;
 namespace RecipeApi.Services;
 
 /// <summary>
-/// The only place an ingredient query may live. No entity leaves this class — what the
-/// endpoints return is built here.
+/// Business logic and database queries for the central ingredient list.
 /// </summary>
 public class IngredientService(RecipeDbContext recipeDb)
 {

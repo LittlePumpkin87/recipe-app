@@ -309,7 +309,9 @@ ASP.NET Core does not read `.env` files at all; that convention comes from Node.
 `.env` into environment variables before `WebApplication.CreateBuilder` builds
 the configuration — `TraversePath()` walks up from the project directory to find
 it, and `NoClobber()` leaves real environment variables untouched, which is what
-a container needs.
+a container needs. The order in `Program.cs` follows from that:
+`DotNetEnv` first, `AddDatabaseConnection` second, `AddDbContext` last, because
+each step reads what the one before it wrote.
 
 ### Reading the schema into EF Core
 
@@ -537,7 +539,8 @@ named after the status code, `ConflictExceptionHandler` implements
 `IExceptionHandler` and returns `false` for anything else, and `Program.cs` wires
 it with `AddExceptionHandler` plus `AddProblemDetails` and enables it with
 `UseExceptionHandler`. Without the `AddProblemDetails` the 409 would come back
-with an empty body.
+with an empty body. The exception's message becomes the response's `detail`, so
+it is phrased for a client, not for a log.
 
 **Unknown fields are refused globally.** Nest's `ValidationPipe` is configured
 with `forbidNonWhitelisted`, so `{ "name": "Lauch", "id": "abc" }` is a 400.

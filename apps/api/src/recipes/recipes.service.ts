@@ -5,11 +5,7 @@ import { RecipeListItemDto, RecipeDetailDto, CreateRecipeDto, CreateRecipeIngred
 import { normalizeIngredientName } from '../common/normalize-name';
 import { Prisma } from '../generated/prisma/client';
 
-/** Business logic for recipes, and the only place a database query for them
-may live. The two read paths fetch deliberately different shapes: the list
-never loads instructions or ingredients, so the overview stays small as the
-recipe count grows. Every method hands its rows to the mapper — a Prisma row
-must not leave this class. */
+/** Business logic and database queries for recipes. */
 @Injectable()
 export class RecipesService {
 
@@ -39,14 +35,7 @@ export class RecipesService {
     return toRecipeDetail(recipe)
   }
 
-  /** Finds or creates each ingredient by normalized name and returns the ids,
-  keyed by that name. Takes the caller's `transactionClient`, so ingredients
-  created here are rolled back with the rest; a name that appears twice in the
-  list is looked up once.
-
-  Three things are called "ingredient" around here and each has its own word: an
-  `ingredientLine` is what the request sent, an `ingredient` is the row in the
-  table, and a `recipeIngredient` is the link between a recipe and one of them. */
+  /** Finds or creates each ingredient by normalized name; returns the ids keyed by that name. */
   private async resolveIngredientIds(
     transactionClient: Prisma.TransactionClient,
     ingredientLines: CreateRecipeIngredientDto[],
@@ -68,31 +57,37 @@ export class RecipesService {
     return ingredientIds;
   }
 
-  /** Every write goes through `transactionClient`, so a failure anywhere rolls
-  back the ingredients created along the way as well. The mapper runs only after
-  the commit. */
+  /** Builds the `data` for a recipe insert. */
+  private buildRecipeCreateData(
+    dto: Omit<CreateRecipeDto, 'servings'> & { servings?: number | null },
+    ingredientIds: Map<string, string>,
+  ): Prisma.RecipeCreateInput {
+    return {
+      title: dto.title,
+      description: dto.description,
+      instructions: dto.instructions,
+      servings: dto.servings,
+      prepMinutes: dto.prepMinutes,
+      totalMinutes: dto.totalMinutes,
+      recipeIngredients: {
+        create: dto.ingredients.map((ingredientLine, index) => ({
+          ingredientId: ingredientIds.get(normalizeIngredientName(ingredientLine.name))!,
+          position: index + 1,
+          amount: ingredientLine.amount,
+          groupLabel: ingredientLine.groupLabel,
+          unit: ingredientLine.unit,
+          note: ingredientLine.note,
+        })),
+      },
+    };
+  }
+
+  /** Creates a recipe with its ingredient list in one transaction. */
   async create(dto: CreateRecipeDto): Promise<RecipeDetailDto> {
     const recipe = await this.prisma.$transaction(async (transactionClient) => {
       const ingredientIds = await this.resolveIngredientIds(transactionClient, dto.ingredients);
       return transactionClient.recipe.create({
-        data: {
-          title: dto.title,
-          description: dto.description,
-          instructions: dto.instructions,
-          servings: dto.servings,
-          prepMinutes: dto.prepMinutes,
-          totalMinutes: dto.totalMinutes,
-          recipeIngredients: {
-            create: dto.ingredients.map((ingredientLine, index) => ({
-              ingredientId: ingredientIds.get(normalizeIngredientName(ingredientLine.name))!,
-              position: index + 1,
-              amount: ingredientLine.amount,
-              groupLabel: ingredientLine.groupLabel,
-              unit: ingredientLine.unit,
-              note: ingredientLine.note,
-            })),
-          },
-        },
+        data: this.buildRecipeCreateData(dto, ingredientIds),
         include: recipeIngredientInclude,
       });
     });
@@ -100,13 +95,9 @@ export class RecipesService {
     return toRecipeDetail(recipe);
   }
 
-  /** Missing fields stay untouched; a present `ingredients` replaces the whole
-  list. `updated_at` belongs to the database triggers, not to this method. The
-  recipe update runs first so that an unknown id fails with P2025, a 404, before
-  anything is written; resolving ingredients first would end in a foreign-key
-  error and a 500. Prisma checks the row even when `data` is empty, so an
-  ingredients-only request answers 404 as well. The catch wraps the whole
-  transaction: caught inside, the error would let Prisma commit. */
+
+
+  /** Updates the given fields; a present `ingredients` replaces the whole list. */
   async update(id: string, dto: UpdateRecipeDto): Promise<RecipeDetailDto> {
     try {
       const recipe = await this.prisma.$transaction(async (transactionClient) => {
@@ -151,10 +142,7 @@ export class RecipesService {
   }
 
 
-  /** Deletes without looking first: a missing row surfaces as P2025 and becomes
-  a 404. The join rows go with the recipe through `ON DELETE CASCADE`, inside
-  the same statement, which is why no transaction is needed here; the
-  ingredients themselves stay. */
+  /** Deletes a recipe together with its ingredient lines. */
   async remove(id: string): Promise<void> {
     try {
       await this.prisma.recipe.delete({ where: { id } });

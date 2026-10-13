@@ -4,8 +4,8 @@ using System.Text.RegularExpressions;
 namespace RecipeApi.Utility;
 
 /// <summary>
-/// Produces the value stored in <c>ingredient.name_normalized</c>, the column that
-/// carries the unique index. Counterpart to <c>normalize-name.ts</c>
+/// Produces the value stored in <c>ingredient.name_normalized</c>; counterpart to
+/// <c>normalize-name.ts</c>.
 /// </summary>
 public static partial class IngredientName
 {

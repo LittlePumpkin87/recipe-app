@@ -7,9 +7,7 @@ using RecipeApi.Utility;
 namespace RecipeApi.Services;
 
 /// <summary>
-/// The only place a recipe query may live. Reads project straight into DTOs and answer
-/// <c>null</c> rather than throwing; the two write paths that save more than once open a
-/// transaction of their own, so every step of them stays inside it.
+/// Business logic and database queries for recipes.
 /// </summary>
 public class RecipeService(RecipeDbContext recipeDb)
 {
@@ -62,13 +60,7 @@ public class RecipeService(RecipeDbContext recipeDb)
     }
 
     /// <summary>
-    /// Finds or creates an ingredient per line, keyed by its normalised name. Nothing is
-    /// written here — new rows are only queued, and the caller's <c>SaveChangesAsync</c>
-    /// decides when they reach the database.
-    /// <para>Three things are called "ingredient" around here and each has its own word:
-    /// an <c>ingredientLine</c> is what the request sent, an <c>ingredient</c> is the row
-    /// in the table, and a <c>recipeIngredient</c> is the link between a recipe and
-    /// one of them.</para>
+    /// Finds or creates an ingredient per line, keyed by its normalised name.
     /// </summary>
     private async Task<Dictionary<string, Ingredient>> ResolveIngredientsAsync(
     IReadOnlyList<CreateRecipeIngredientDto> ingredientLines)
@@ -152,11 +144,7 @@ public class RecipeService(RecipeDbContext recipeDb)
     }
 
     /// <summary>
-    /// Applies only the fields the request carried. Which test decides that differs by
-    /// column: for a <c>NOT NULL</c> one an explicit <c>null</c> was already refused by
-    /// <c>Validate</c>, so <c>null</c> can only mean "absent"; for a nullable one it means
-    /// "clear it", and only the DTO's <c>…Given</c> flag tells the two apart. The recipe is
-    /// loaded first so that an unknown id answers 404 before an ingredient is resolved.
+    /// Applies only the fields the request carried.
     /// </summary>
     public async Task<RecipeDetailDto?> UpdateAsync(Guid id, UpdateRecipeDto dto)
     {

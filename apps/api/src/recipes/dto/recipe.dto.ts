@@ -1,5 +1,5 @@
 import { Transform, Type } from "class-transformer";
-import { Unit } from "../../generated/prisma/client";
+import { Language, Unit } from "../../generated/prisma/client";
 import { ArrayNotEmpty, IsArray, IsEnum, IsInt, IsNotEmpty, IsNumber, IsOptional, IsPositive, IsString, Max, MaxLength, Min, ValidateIf, ValidateNested } from "class-validator";
 import { PartialType } from "@nestjs/mapped-types";
 
@@ -27,10 +27,16 @@ export interface RecipeIngredientDto {
     position: number;
 }
 
-/** One line of the ingredient list. There is no `position` and no
-`ingredientId`: the service takes the position from the array index and finds
-or creates the ingredient by `name`, so each line reaches its ingredient one
-way only. */
+/** What the importer hands to the service*/
+export type ImportRecipeInput = Omit<CreateRecipeDto, 'servings'> & {
+    servings: number | null;
+    sourceName: string;
+    sourceUrl: string;
+    externalId: string;
+    language: Language;
+}
+
+/** One line of the ingredient list. */
 export class CreateRecipeIngredientDto {
     @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
     @IsString()
@@ -60,9 +66,7 @@ export class CreateRecipeIngredientDto {
 }
 
 
-/** `sourceUrl`, `sourceName` and `externalId` are left out on purpose: they
-belong to the V3 importer, and `forbidNonWhitelisted` answers 400 if a client
-sends them. */
+/** The body of `POST /recipes`. */
 export class CreateRecipeDto {
     @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
     @IsString()
@@ -102,12 +106,7 @@ export class CreateRecipeDto {
     ingredients: CreateRecipeIngredientDto[];
 }
 
-/** Every field of CreateRecipeDto, each one optional: a missing field is left
-untouched. `skipNullProperties: false` makes the difference between missing and
-`null` — without it PartialType adds `@IsOptional`, which lets `null` through,
-and `"title": null` would pass validation only to fail in Prisma as a 500.
-Fields that may be cleared keep their own `@IsOptional` from the create DTO. A
-present `ingredients` replaces the whole list. */
+/** The body of `PATCH /recipes/:id`, every field optional. */
 export class UpdateRecipeDto extends PartialType(CreateRecipeDto, {
     skipNullProperties: false,
 }) { }

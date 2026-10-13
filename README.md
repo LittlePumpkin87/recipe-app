@@ -223,14 +223,14 @@ The API is compiled to CommonJS. `apps/api/tsconfig.json` sets
 `package.json`; since none is set, the emitted output is CommonJS and relative
 imports are written without a file extension.
 
-A JSDoc block is written only where deleting it would lose information: why a
-file exists, a promise the types cannot express (a sort order, an `amount`
-already converted from `Decimal`), or a deliberate absence — such as the missing
-lookup before the insert in `IngredientsService.create`. A block that restates a
-name or a field list is left out, so a self-explanatory interface gets none.
-Where a block exists, it sits directly above the declaration, not above the
-imports: TypeScript attaches the text to the symbol, so hovering
-`PrismaService` anywhere in the editor shows it without opening the file.
+A doc block says what a declaration is or does, in one sentence — never why.
+The reasoning lives in this README and in [docs/DECISIONS.md](docs/DECISIONS.md),
+so there is one version of it that cannot drift from a second copy in the code.
+A self-explanatory interface gets no block at all. Where a block exists, it sits
+directly above the declaration, not above the imports: TypeScript attaches the
+text to the symbol, so hovering `PrismaService` anywhere in the editor shows it
+without opening the file. The .NET backend follows the same rule with
+`/// <summary>`.
 
 ### DTOs, mappers and validation
 
@@ -247,7 +247,8 @@ and a mapper, and the three shapes involved are deliberately different:
 `ingredients` that exists in no table. In the database the relation is called
 `recipeIngredients` and the ingredient name sits one table deeper; the mapper
 pulls it up and converts `amount` from a Prisma `Decimal` to a plain number,
-which would otherwise serialise as a quoted string. The list DTO drops
+which would otherwise serialise as a quoted string. The join row's own `id` and
+`recipeId` are dropped: neither means anything outside the database. The list DTO drops
 `instructions` entirely so the overview stays small as the recipe count grows.
 
 Each mapper derives its input type from the same `select` or `include` constant
@@ -530,6 +531,20 @@ the ids are kept in a `Map` keyed by the normalized name, so both lines point at
 the same ingredient. `position` is taken from the index in the incoming list,
 starting at 1.
 
+Three things are called "ingredient" here, and the code gives each its own word,
+in both backends: an `ingredientLine` is what the request sent, an `ingredient`
+is the row in the table, and a `recipeIngredient` is the link between a recipe
+and one of them.
+
+The request DTO has no `sourceUrl`, `sourceName` or `externalId`. Provenance
+belongs to the importer, which writes through its own input type, and
+`forbidNonWhitelisted` answers 400 if a client sends those fields anyway.
+
+`buildRecipeCreateData` builds the insert's `data` and runs no query, so each
+caller chooses its own `include` or `select`. Prisma derives the result type
+from that argument: `create()` includes the ingredient lines for the mapper, the
+importer selects only the `id`.
+
 All of it runs in **one transaction**. The ingredients are written first, the
 recipe and its join rows last, so the case that matters is a failure in between:
 a dropped connection or a restart must not leave a freshly created ingredient
@@ -588,18 +603,13 @@ deletes every `recipe_ingredient` row of the recipe and writes the new list,
 positions again taken from the index. An ingredient that dropped out of the list
 is unlinked, not deleted; it stays in `ingredient` for other recipes.
 
-`updatedAt` is set explicitly in the update. A request carrying only
-`ingredients` leaves every recipe field `undefined`; Prisma then sends no
-`UPDATE` for the recipe at all, and `@updatedAt`, which only rides along on an
-`UPDATE`, never fires — a recipe whose flour went from one to two tablespoons
-would look untouched. This was found by comparing `updated_at` in psql before
-and after such a request.
-
-That assignment is on its way out. The decision of 15 September 2026 moves
-`updated_at` into the database as two triggers, the second of which covers
-exactly this case — an ingredient-only edit — by touching the parent recipe. The
-explicit assignment is what keeps the timestamp honest until that migration is
-written. See [Second backend: ASP.NET Core](docs/DECISIONS.md#second-backend-aspnet-core).
+`updated_at` is not set by the service. A request carrying only `ingredients`
+leaves every recipe field `undefined`, and Prisma then sends no `UPDATE` for the
+recipe at all — a recipe whose flour went from one to two tablespoons would look
+untouched. Since 12 October 2026 two database triggers own the column, the
+second of which covers exactly this case by touching the parent recipe whenever
+a `recipe_ingredient` row changes. See
+[Second backend: ASP.NET Core](docs/DECISIONS.md#second-backend-aspnet-core).
 
 Replacing gives the join rows new ids on every edit. That is harmless as long as
 nothing points at a single row: the meal plan will point at recipes, the
@@ -612,7 +622,9 @@ an unknown id it raises `P2025` before anything has been written, and the
 service answers `404`. Resolving the ingredients first would create ingredients
 for a recipe that does not exist, and inserting the join rows would then fail on
 the foreign key with `P2003` — rolled back all the same, but answered with a
-`500`. The `catch` sits around the whole `$transaction`, never inside the
+`500`. Prisma checks the row even when `data` is empty, so a request carrying
+only `ingredients` answers `404` for an unknown id as well. The `catch` sits
+around the whole `$transaction`, never inside the
 callback: an error caught in there would let the callback finish normally, and
 Prisma would commit.
 

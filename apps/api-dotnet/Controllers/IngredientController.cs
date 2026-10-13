@@ -5,9 +5,7 @@ using RecipeApi.Services;
 namespace RecipeApi.Controllers;
 
 /// <summary>
-/// Maps the /ingredients endpoints onto <see cref="IngredientService"/> and holds no
-/// business logic. Both serve the recipe form: GET feeds the autocomplete that steers
-/// an entry towards an existing ingredient, POST creates one that does not exist yet.
+/// Maps the /ingredients endpoints onto <see cref="IngredientService"/>.
 /// </summary>
 [ApiController]
 [Route("ingredients")]
