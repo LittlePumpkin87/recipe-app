@@ -383,8 +383,9 @@ reviewable in a pull request.
 **The generated client is not committed.** The generator writes to
 `apps/api/src/generated/prisma`, which is listed in `apps/api/.gitignore`. It is
 build output derived from the schema and would otherwise produce enormous, noisy
-diffs. `prisma migrate dev` regenerates it; `npx prisma generate` does so on its
-own if you only pulled someone else's migration.
+diffs. Since Prisma 7, `prisma migrate dev` no longer regenerates it: run
+`npx prisma generate` after every schema change, or the types lag behind the
+database without any error until code uses a new column.
 
 **Prisma 7 requires a driver adapter.** The Rust query engine is gone, so the
 client cannot open a connection by itself — which is why the `datasource` block

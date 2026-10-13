@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { recipeIngredientInclude, recipeListSelect, toRecipeDetail, toRecipeListItem } from './recipes.mapper';
-import { RecipeListItemDto, RecipeDetailDto, CreateRecipeDto, CreateRecipeIngredientDto, UpdateRecipeDto } from './dto/recipe.dto';
+import { RecipeListItemDto, RecipeDetailDto, CreateRecipeDto, CreateRecipeIngredientDto, UpdateRecipeDto, ImportRecipeInput } from './dto/recipe.dto';
 import { normalizeIngredientName } from '../common/normalize-name';
 import { Prisma } from '../generated/prisma/client';
 
@@ -95,7 +95,23 @@ export class RecipesService {
     return toRecipeDetail(recipe);
   }
 
-
+  /** Writes one imported recipe and returns its id. */
+  async importRecipe(input: ImportRecipeInput): Promise<string> {
+    const recipe = await this.prisma.$transaction(async (transactionClient) => {
+      const ingredientIds = await this.resolveIngredientIds(transactionClient, input.ingredients);
+      return transactionClient.recipe.create({
+        data: {
+          ...this.buildRecipeCreateData(input, ingredientIds),
+          sourceName: input.sourceName,
+          externalId: input.externalId,
+          sourceUrl: input.sourceUrl,
+          language: input.language
+        },
+        select: { id: true }
+      });
+    });
+    return recipe.id;
+  }
 
   /** Updates the given fields; a present `ingredients` replaces the whole list. */
   async update(id: string, dto: UpdateRecipeDto): Promise<RecipeDetailDto> {
