@@ -1,37 +1,57 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import {
+    Body,
+    Controller,
+    Delete,
+    Get,
+    HttpCode,
+    HttpStatus,
+    Param,
+    ParseUUIDPipe,
+    Patch,
+    Post,
+    Query,
+} from '@nestjs/common';
 import { RecipesService } from './recipes.service';
-import { CreateRecipeDto, RecipeDetailDto, RecipeListItemDto, UpdateRecipeDto } from './dto/recipe.dto';
+import {
+    CreateRecipeDto,
+    RecipeDetailDto,
+    RecipeListItemDto,
+    UpdateRecipeDto,
+} from './dto/recipe.dto';
 
 /** Maps the /recipes endpoints onto RecipesService. */
 @Controller('recipes')
 export class RecipesController {
-  constructor(private readonly recipesService: RecipesService) { }
+    constructor(private readonly recipesService: RecipesService) {}
 
-  @Get()
-  findAll(@Query('search') search?: string): Promise<RecipeListItemDto[]> {
-    return this.recipesService.findAll(search);
-  }
+    @Get()
+    findAll(@Query('search') search?: string): Promise<RecipeListItemDto[]> {
+        return this.recipesService.findAll(search);
+    }
 
-  @Get(':id')
-  findOne(
-    @Param('id', new ParseUUIDPipe({ version: '7' })) id: string,
-  ): Promise<RecipeDetailDto> {
-    return this.recipesService.findOne(id);
-  }
+    @Get(':id')
+    findOne(
+        @Param('id', new ParseUUIDPipe({ version: '7' })) id: string,
+    ): Promise<RecipeDetailDto> {
+        return this.recipesService.findOne(id);
+    }
 
-  @Post()
-  create(@Body() dto: CreateRecipeDto): Promise<RecipeDetailDto> {
-    return this.recipesService.create(dto);
-  }
+    @Post()
+    create(@Body() dto: CreateRecipeDto): Promise<RecipeDetailDto> {
+        return this.recipesService.create(dto);
+    }
 
-  @Delete(':id')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  remove(@Param('id', new ParseUUIDPipe({ version: '7' })) id: string) {
-    return this.recipesService.remove(id);
-  }
+    @Delete(':id')
+    @HttpCode(HttpStatus.NO_CONTENT)
+    remove(@Param('id', new ParseUUIDPipe({ version: '7' })) id: string) {
+        return this.recipesService.remove(id);
+    }
 
-  @Patch(':id')
-  update(@Param('id', new ParseUUIDPipe({ version: '7' })) id: string, @Body() dto: UpdateRecipeDto): Promise<RecipeDetailDto> {
-    return this.recipesService.update(id, dto);
-  }
+    @Patch(':id')
+    update(
+        @Param('id', new ParseUUIDPipe({ version: '7' })) id: string,
+        @Body() dto: UpdateRecipeDto,
+    ): Promise<RecipeDetailDto> {
+        return this.recipesService.update(id, dto);
+    }
 }

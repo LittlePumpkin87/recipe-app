@@ -4,7 +4,7 @@ import { IngredientsService } from './ingredients.service';
 
 /** Wires the ingredient controller and service together. */
 @Module({
-  controllers: [IngredientsController],
-  providers: [IngredientsService],
+    controllers: [IngredientsController],
+    providers: [IngredientsService],
 })
 export class IngredientsModule {}

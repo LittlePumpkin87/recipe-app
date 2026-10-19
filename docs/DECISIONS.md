@@ -83,6 +83,36 @@ combining diaeresis, identical on screen and two different strings to Postgres.
 mapping can be recorded once, by hand, and reused. The real protection against
 duplicates is the autocomplete when entering a recipe.
 
+**The alias lookup comes before the bulk import, not with V3** (decided 13
+October 2026, replacing the deferral of 11 September). The deferral rested on
+"only an importer produces spellings nobody typed in"; the allrecipes import is
+that importer, it just arrived earlier. An alias only acts at write time: imported
+without the lookup, "egg" and "eggs" become two ingredients, and an alias added
+afterwards merges nothing — every pair would have to be repointed by hand.
+
+Three consequences follow:
+
+- **The aliases live in a file in the repository**, not only in the database.
+  `ingredient_alias` references `ingredient`, so the `TRUNCATE` that precedes a
+  re-import empties it as well. The importer reads the file before the first
+  recipe and creates the ingredients and their aliases.
+- **Both backends look up aliases.** `resolveIngredientIds` and
+  `ResolveIngredientsAsync` check `ingredient.name_normalized` first, then
+  `ingredient_alias.alias`. A lookup in Nest only would let `POST /recipes` on
+  the .NET side create the plural again.
+- **English candidates are generated, not decided.** English plurals are mostly
+  regular, so a script proposes pairs such as egg/eggs from the imported names
+  and a person confirms each one. German stays manual, for the reason above.
+
+**Recipes whose ingredient name begins with a dash or a digit are skipped.**
+Those are lines where the allrecipes parser failed to separate name and amount:
+`1 1/4 cups white sugar` arrives as name `14 cups white sugar` with amount 1,
+`4 avocados - halved` as name `- halved` with the real name in `unit`. An alias
+cannot repair either — it fixes which ingredient a line points at, never the
+amount on the line, and `- halved` stands for a different ingredient in every
+recipe. It costs 696 recipes (1.4 %), including a few correct ones such as
+"4-inch bamboo skewers"; the rule stays simple in exchange.
+
 **`onDelete` differs per direction, on purpose.** Deleting a recipe cascades to
 its `RecipeIngredient` rows — "200 g flour" means nothing without its recipe.
 Deleting an *ingredient* that is still used is restricted, which is the default

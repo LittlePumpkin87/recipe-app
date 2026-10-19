@@ -1,28 +1,35 @@
-import { Prisma } from "../generated/prisma/client";
-import { RecipeDetailDto, RecipeIngredientDto, RecipeListItemDto } from "./dto/recipe.dto";
+import { Prisma } from '../generated/prisma/client';
+import {
+    RecipeDetailDto,
+    RecipeIngredientDto,
+    RecipeListItemDto,
+} from './dto/recipe.dto';
 
 /** The include the detail query and the detail mapper share. */
 export const recipeIngredientInclude = {
     recipeIngredients: {
         orderBy: { position: 'asc' },
         include: {
-            ingredient: { select: { name: true, } }
+            ingredient: { select: { name: true } },
         },
-    }
+    },
 } satisfies Prisma.RecipeInclude;
 
 type Recipe = Prisma.RecipeGetPayload<{
     include: typeof recipeIngredientInclude;
 }>;
 
-
 /** Flattens one join row into a response line. */
-function toRecipeIngredient(recipeIngredient: Recipe['recipeIngredients'][number],
+function toRecipeIngredient(
+    recipeIngredient: Recipe['recipeIngredients'][number],
 ): RecipeIngredientDto {
     return {
         ingredientId: recipeIngredient.ingredientId,
         name: recipeIngredient.ingredient.name,
-        amount: recipeIngredient.amount === null ? null : recipeIngredient.amount.toNumber(),
+        amount:
+            recipeIngredient.amount === null
+                ? null
+                : recipeIngredient.amount.toNumber(),
         unit: recipeIngredient.unit,
         note: recipeIngredient.note,
         groupLabel: recipeIngredient.groupLabel,
@@ -40,7 +47,7 @@ export function toRecipeDetail(recipe: Recipe): RecipeDetailDto {
         prepMinutes: recipe.prepMinutes,
         totalMinutes: recipe.totalMinutes,
         ingredients: recipe.recipeIngredients.map(toRecipeIngredient),
-    }
+    };
 }
 
 export const recipeListSelect = {
@@ -48,13 +55,12 @@ export const recipeListSelect = {
     title: true,
     servings: true,
     prepMinutes: true,
-    totalMinutes: true
+    totalMinutes: true,
 } satisfies Prisma.RecipeSelect;
 
 type RecipeListItem = Prisma.RecipeGetPayload<{
     select: typeof recipeListSelect;
 }>;
-
 
 export function toRecipeListItem(recipe: RecipeListItem): RecipeListItemDto {
     return {
@@ -63,5 +69,5 @@ export function toRecipeListItem(recipe: RecipeListItem): RecipeListItemDto {
         servings: recipe.servings,
         prepMinutes: recipe.prepMinutes,
         totalMinutes: recipe.totalMinutes,
-    }
+    };
 }

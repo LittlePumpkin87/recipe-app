@@ -7,9 +7,13 @@ import { RecipesModule } from './recipes/recipes.module';
 import { IngredientsModule } from './ingredients/ingredients.module';
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true, envFilePath: '../../.env' }), PrismaModule, RecipesModule, IngredientsModule],
-  controllers: [AppController],
-  providers: [AppService],
+    imports: [
+        ConfigModule.forRoot({ isGlobal: true, envFilePath: '../../.env' }),
+        PrismaModule,
+        RecipesModule,
+        IngredientsModule,
+    ],
+    controllers: [AppController],
+    providers: [AppService],
 })
-export class AppModule { }
-
+export class AppModule {}

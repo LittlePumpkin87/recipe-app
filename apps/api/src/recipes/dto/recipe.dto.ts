@@ -1,7 +1,22 @@
-import { Transform, Type } from "class-transformer";
-import { Language, Unit } from "../../generated/prisma/client";
-import { ArrayNotEmpty, IsArray, IsEnum, IsInt, IsNotEmpty, IsNumber, IsOptional, IsPositive, IsString, Max, MaxLength, Min, ValidateIf, ValidateNested } from "class-validator";
-import { PartialType } from "@nestjs/mapped-types";
+import { Transform, Type } from 'class-transformer';
+import { Language, Unit } from '../../generated/prisma/client';
+import {
+    ArrayNotEmpty,
+    IsArray,
+    IsEnum,
+    IsInt,
+    IsNotEmpty,
+    IsNumber,
+    IsOptional,
+    IsPositive,
+    IsString,
+    Max,
+    MaxLength,
+    Min,
+    ValidateIf,
+    ValidateNested,
+} from 'class-validator';
+import { PartialType } from '@nestjs/mapped-types';
 
 export interface RecipeListItemDto {
     id: string;
@@ -34,25 +49,27 @@ export type ImportRecipeInput = Omit<CreateRecipeDto, 'servings'> & {
     sourceUrl: string;
     externalId: string;
     language: Language;
-}
+};
 
 /** One line of the ingredient list. */
 export class CreateRecipeIngredientDto {
-    @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+    @Transform(({ value }) =>
+        typeof value === 'string' ? value.trim() : value,
+    )
     @IsString()
     @IsNotEmpty()
     @MaxLength(120)
-    name: string
+    name: string;
 
     @IsOptional()
     @IsString()
     @MaxLength(80)
-    note?: string
+    note?: string;
 
     @IsOptional()
     @IsString()
     @MaxLength(100)
-    groupLabel?: string
+    groupLabel?: string;
 
     @IsOptional()
     @IsEnum(Unit)
@@ -62,42 +79,44 @@ export class CreateRecipeIngredientDto {
     @IsNumber({ maxDecimalPlaces: 2 })
     @IsPositive()
     @Max(9999)
-    amount?: number
+    amount?: number;
 }
-
 
 /** The body of `POST /recipes`. */
 export class CreateRecipeDto {
-    @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+    @Transform(({ value }) =>
+        typeof value === 'string' ? value.trim() : value,
+    )
     @IsString()
     @IsNotEmpty()
     @MaxLength(100)
-    title: string
+    title: string;
 
     @ValidateIf((_, value) => value !== undefined)
     @IsInt()
     @Min(1)
-    servings?: number
+    servings?: number;
 
     @IsOptional()
     @IsString()
-    description?: string
+    description?: string;
 
     @IsOptional()
     @IsInt()
     @Min(1)
-    prepMinutes?: number
+    prepMinutes?: number;
 
     @IsOptional()
     @IsInt()
     @Min(1)
-    totalMinutes?: number
+    totalMinutes?: number;
 
-    @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+    @Transform(({ value }) =>
+        typeof value === 'string' ? value.trim() : value,
+    )
     @IsString()
     @IsNotEmpty()
-    instructions: string
-
+    instructions: string;
 
     @IsArray()
     @ArrayNotEmpty()
@@ -109,4 +128,4 @@ export class CreateRecipeDto {
 /** The body of `PATCH /recipes/:id`, every field optional. */
 export class UpdateRecipeDto extends PartialType(CreateRecipeDto, {
     skipNullProperties: false,
-}) { }
+}) {}

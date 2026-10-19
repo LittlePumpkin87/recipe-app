@@ -5,16 +5,15 @@ import { CreateIngredientDto, IngredientDto } from './dto/ingredient.dto';
 /** Maps the /ingredients endpoints onto IngredientsService. */
 @Controller('ingredients')
 export class IngredientsController {
-  constructor(private readonly ingredientsService: IngredientsService) { }
+    constructor(private readonly ingredientsService: IngredientsService) {}
 
-  @Get()
-  findAll(@Query('search') search?: string): Promise<IngredientDto[]> {
-    return this.ingredientsService.findAll(search);
-  }
+    @Get()
+    findAll(@Query('search') search?: string): Promise<IngredientDto[]> {
+        return this.ingredientsService.findAll(search);
+    }
 
-  @Post()
-  create(@Body() dto: CreateIngredientDto): Promise<IngredientDto> {
-    return this.ingredientsService.create(dto);
-  }
-
+    @Post()
+    create(@Body() dto: CreateIngredientDto): Promise<IngredientDto> {
+        return this.ingredientsService.create(dto);
+    }
 }

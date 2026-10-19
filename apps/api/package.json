@@ -12,6 +12,7 @@
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
+    "import:allrecipes": "nest build && node dist/import/import-allrecipes.js ../../data/allrecipes.ndjson",
     "lint": "oxlint src/ test/",
     "test": "jest",
     "test:watch": "jest --watch",

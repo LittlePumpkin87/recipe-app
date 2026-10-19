@@ -1,7 +1,13 @@
-import { Unit } from "../../generated/prisma/client";
+import { Unit } from '../../generated/prisma/client';
 
 import { Transform } from 'class-transformer';
-import { IsEnum, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+    IsEnum,
+    IsNotEmpty,
+    IsOptional,
+    IsString,
+    MaxLength,
+} from 'class-validator';
 
 export interface IngredientDto {
     id: string;
@@ -11,7 +17,9 @@ export interface IngredientDto {
 
 /** The body of `POST /ingredients`. */
 export class CreateIngredientDto {
-    @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+    @Transform(({ value }) =>
+        typeof value === 'string' ? value.trim() : value,
+    )
     @IsString()
     @IsNotEmpty()
     @MaxLength(120)
