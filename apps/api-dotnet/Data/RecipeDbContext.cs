@@ -24,7 +24,7 @@ public partial class RecipeDbContext : DbContext
     {
         modelBuilder
             .HasPostgresEnum("language", new[] { "DE", "EN" })
-            .HasPostgresEnum("unit", new[] { "GRAM", "KILOGRAM", "MILLILITER", "LITER", "PIECE", "CUP", "TABLESPOON", "TEASPOON", "PINCH", "BUNCH", "CLOVE", "SLICE", "PACK", "CAN", "OUNCE", "POUND", "PINT", "QUART" });
+            .HasPostgresEnum("unit", new[] { "GRAM", "KILOGRAM", "MILLILITER", "LITER", "PIECE", "CUP", "TABLESPOON", "TEASPOON", "PINCH", "BUNCH", "CLOVE", "SLICE", "PACK", "CAN", "OUNCE", "POUND", "PINT", "QUART", "BOTTLE", "FLUID_OUNCE" });
 
         modelBuilder.Entity<Ingredient>(entity =>
         {
