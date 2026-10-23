@@ -23,5 +23,10 @@ public enum Unit
     [PgName("PACK")][JsonStringEnumMemberName("PACK")] Pack,
     [PgName("CAN")][JsonStringEnumMemberName("CAN")] Can,
     [PgName("BOTTLE")][JsonStringEnumMemberName("BOTTLE")] Bottle,
-    [PgName("FLUID_OUNCE")][JsonStringEnumMemberName("FLUID_OUNCE")] FluidOunce
+    [PgName("FLUID_OUNCE")][JsonStringEnumMemberName("FLUID_OUNCE")] FluidOunce,
+    [PgName("OUNCE")][JsonStringEnumMemberName("OUNCE")] Ounce,
+    [PgName("POUND")][JsonStringEnumMemberName("POUND")] Pound,
+    [PgName("PINT")][JsonStringEnumMemberName("PINT")] Pint,
+    [PgName("QUART")][JsonStringEnumMemberName("QUART")] Quart,
+
 }
