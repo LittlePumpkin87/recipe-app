@@ -430,8 +430,8 @@ confirmation, the script refuses to run unless `DATABASE_URL` points at
 
 **It is not a delivery mechanism.** A handful of recipes is enough, because
 their only job is to prove that a shared ingredient resolves to a single
-`ingredient` row. Real recipes arrive through `POST /recipes` and, from V3, the
-URL importer — see [Shipped starter recipes](docs/DECISIONS.md#shipped-starter-recipes).
+`ingredient` row. Real recipes arrive through `POST /recipes`, the bulk import
+below and, from V3, the URL importer — see [Shipped starter recipes](docs/DECISIONS.md#shipped-starter-recipes).
 
 The seed is also the rehearsal for `POST /recipes`: normalise the name, `upsert`
 on `nameNormalized`, keep the returned ids in a `Map`, then write the recipes
@@ -448,6 +448,63 @@ key, and turn a singular relation field into a list. It makes a schema *valid*,
 not *correct* — it never decides `onDelete` for you, because that is a
 behavioural choice. Run it once you are happy with what you wrote, otherwise you
 lose track of which lines are yours.
+
+### Bulk import: allrecipes
+
+`src/import/import-allrecipes.ts` fills the database with about 46,500 English
+recipes from a public allrecipes.com dump. Where the data comes from, its
+licence and how to produce `data/allrecipes.ndjson` from it is described in
+[tools/README.md](tools/README.md). The data stays local; none of it is in this
+repository.
+
+Empty the tables first, then run the import from inside `apps/api`:
+
+```bash
+docker compose exec db psql -U recipe -d recipe \
+  -c 'TRUNCATE recipe_ingredient, ingredient_alias, recipe, ingredient;'
+cd apps/api && npm run import:allrecipes
+```
+
+All four tables go into one `TRUNCATE`, because Postgres refuses to empty a
+table that another table still references.
+
+**It is a script, not an endpoint.** It starts Nest as an application context,
+without HTTP, and writes every recipe through `RecipesService.importRecipe()`
+in a transaction of its own. The npm script compiles with `nest build` and runs
+the result with `node`; `tsx` would be shorter but does not emit the decorator
+metadata Nest's dependency injection reads. `class-validator` does not run
+either — the `ValidationPipe` belongs to HTTP — so the adapter
+(`allrecipes.adapter.ts`) does the checking itself.
+
+**What the counters mean.** Each line of the file ends up in exactly one:
+
+| Counter | Meaning |
+|---|---|
+| `imported` | written |
+| `skipped` | rejected by the adapter before any write |
+| `duplicates` | refused by the unique index on (`source_name`, `external_id`) — the source holds about 2,100 copies |
+| `failed` | any other error; the source URL is printed |
+
+The run on 19 October 2026 read 50,513 lines: 46,562 imported, 1,910 skipped,
+2,039 duplicates, 2 failed.
+
+**What gets skipped.** A recipe without a recipe id in its URL, without
+instructions or ingredients, with a title over 100 characters, or with an
+ingredient whose name is empty or begins with a dash or a digit. The last rule
+catches lines where the source's parser did not separate amount and name —
+`1 1/4 cups white sugar` arrives as name `14 cups white sugar` with amount 1.
+See [Data model decisions](docs/DECISIONS.md#data-model-decisions).
+
+**The two failures are known.** Both are copies of recipe 237833, "Cao Lầu",
+whose title contains a NUL byte (`\x00`). Postgres does not accept that
+character in a text column. The recipe is left out.
+
+**Do not seed afterwards.** `npx prisma db seed` empties every table, imported
+recipes included.
+
+**Ingredient aliases are not applied yet.** "egg" and "eggs" become two
+ingredients. The alias lookup comes before the final import (#19); until then
+an import is a trial run.
 
 ### Prisma Studio
 
@@ -565,14 +622,12 @@ server log.
 On success the response is `201` with the same shape as `GET /recipes/:id`. The
 mapper runs after the commit, outside the transaction.
 
-**Aliases are not consulted in V1.** `resolveIngredientIds`, shared by
+**Aliases are not consulted yet.** `resolveIngredientIds`, shared by
 `POST /recipes` and `PATCH /recipes/:id`, looks at `nameNormalized` only, so a
 name that exists solely as an `ingredientAlias.alias` becomes a new ingredient.
-The alias lookup arrives with the V3 importer, the first source of spellings
-nobody typed in by hand; until then the autocomplete in the recipe form is the
-protection against duplicates. There is deliberately no endpoint for managing aliases in V1 either:
-the table is meant to be filled by hand through `prisma studio`, and aliases are
-rare exceptions until the V3 importer starts producing them.
+The alias lookup is being added before the final bulk import (#19), in both
+backends; the aliases themselves will live in a file in the repository. There is
+deliberately no endpoint for managing aliases.
 
 ### `DELETE /recipes/:id`: one statement, no transaction
 
@@ -657,8 +712,8 @@ Two consequences worth knowing:
   rename it in Prisma Studio.
 - **Aliases are not checked here.** A name that exists only as an
   `ingredientAlias.alias` is accepted as a new ingredient. The alias lookup
-  arrives with the V3 importer, in the ingredient resolution shared by
-  `POST /recipes` and `PATCH /recipes/:id`.
+  (#19) goes into the ingredient resolution shared by `POST /recipes` and
+  `PATCH /recipes/:id`, not into this endpoint.
 
 ## 🐘 Working with the database
 

@@ -28,6 +28,7 @@ export interface AllrecipesRecord {
 
 const SOURCE_NAME = 'allrecipes';
 const RECIPE_URL = /allrecipes\.com\/recipe\/(\d+)\//;
+const INVALID_INGREDIENT_NAME = /^[-\d]/;
 
 export function toImportRecipeInput(
     record: AllrecipesRecord,
@@ -42,11 +43,10 @@ export function toImportRecipeInput(
         !Array.isArray(record.Ingredients) ||
         record.Ingredients.length === 0 ||
         record.Ingredients.some(
-            (ingredient) => ingredient.ingredient.trim() === '',
-        ) ||
-        record.Ingredients.some((ingredient) =>
-            ingredient.ingredient.startsWith('-'),
-        ) 
+            (ingredient) =>
+                ingredient.ingredient.trim() === '' ||
+                INVALID_INGREDIENT_NAME.test(ingredient.ingredient.trim()),
+        )
     ) {
         return null;
     }
