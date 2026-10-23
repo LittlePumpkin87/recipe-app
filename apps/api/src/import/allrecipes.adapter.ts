@@ -153,8 +153,10 @@ const UNITS = new Map<string, Unit>([
     ['pieces', Unit.PIECE],
     ['whole', Unit.PIECE],
     ['bottle', Unit.BOTTLE],
-    ['bottles', Unit.BOTTLE]
+    ['bottles', Unit.BOTTLE],
 ]);
+
+const RAW_INPUT = /^\S+ \(([^)]*)\) (\w+)/;
 
 const SIZE_WORDS = new Set([
     'large',
@@ -201,6 +203,18 @@ function toIngredientLine(
         };
     }
     if (word === '') {
+        const match = RAW_INPUT.exec(rawLine);
+        const unit = match ? UNITS.get(match[2].toLowerCase()) : undefined;
+        if (match && unit) {
+            const size = match[1];
+            const brokenSize = size.replace(/[./]/g, '');
+            return {
+                name,
+                amount,
+                unit: amount === undefined ? undefined : unit,
+                note: toNote(`${size} ${misc.replace(brokenSize, '')}`),
+            };
+        }
         return {
             name,
             amount,
