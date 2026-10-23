@@ -152,6 +152,8 @@ const UNITS = new Map<string, Unit>([
     ['piece', Unit.PIECE],
     ['pieces', Unit.PIECE],
     ['whole', Unit.PIECE],
+    ['bottle', Unit.BOTTLE],
+    ['bottles', Unit.BOTTLE]
 ]);
 
 const SIZE_WORDS = new Set([

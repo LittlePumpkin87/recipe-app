@@ -33,6 +33,8 @@ enum Unit {
   POUND
   PINT
   QUART
+  BOTTLE
+  FLUID_OUNCE
   @@map("unit")
 }
 
