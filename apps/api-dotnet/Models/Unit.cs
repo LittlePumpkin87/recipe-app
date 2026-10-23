@@ -22,4 +22,6 @@ public enum Unit
     [PgName("SLICE")][JsonStringEnumMemberName("SLICE")] Slice,
     [PgName("PACK")][JsonStringEnumMemberName("PACK")] Pack,
     [PgName("CAN")][JsonStringEnumMemberName("CAN")] Can,
+    [PgName("BOTTLE")][JsonStringEnumMemberName("BOTTLE")] Bottle,
+    [PgName("FLUID_OUNCE")][JsonStringEnumMemberName("FLUID_OUNCE")] FluidOunce
 }
