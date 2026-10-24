@@ -216,7 +216,8 @@ and a database to talk to.
 It works because the frontend only knows URLs and JSON. Both backends serve the
 same endpoints with the same request and response shapes, against the same
 PostgreSQL database. Only one of them runs at a time; `requests.http` tests
-either one by pointing `@host` at the other port.
+either one by switching the httpYac environment (`nest` or `dotnet` in
+`http-client.env.json`).
 
 The order is deliberate. The NestJS API for V1 is completed first, so the .NET
 version has a working reference for every endpoint and only the framework is

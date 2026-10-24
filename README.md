@@ -120,9 +120,19 @@ dotnet run --project apps/api-dotnet
 ```
 
 It listens on http://localhost:5000, so it does not collide with the NestJS API
-on port 3000. `requests.http` sits in the repository root and carries both ports
-as `@host`, one of them commented out — the REST Client uses the last assignment
-that is not commented, so switching backends means moving the `#` by one line.
+on port 3000. `requests.http` sits in the repository root and is written for
+httpYac (VS Code extension `anweber.vscode-httpyac`, npm package `httpyac`). It
+takes `{{host}}` from `http-client.env.json`, which defines two environments,
+`nest` and `dotnet`. In the editor you pick one with httpYac's environment
+switch; on the command line:
+
+```bash
+npx httpyac send requests.http --all -e dotnet
+```
+
+The file deliberately has no `@host` line: a variable defined in the `.http`
+file overrides the environment, and `--var` on the command line does not win
+against it either when `--all` is used.
 
 The port lives in `apps/api-dotnet/Properties/launchSettings.json`. That file is
 read by `dotnet run` only — a container ignores it and takes `ASPNETCORE_URLS`
@@ -172,6 +182,7 @@ This is an npm workspaces monorepo. Application packages live under `apps/`.
 ├── tools/                  # one-off data preparation — see tools/README.md
 ├── data/                   # downloaded data sets — gitignored, never committed
 ├── requests.http           # example requests — tests either backend
+├── http-client.env.json    # httpYac environments: nest (3000), dotnet (5000)
 ├── docker-compose.yml      # local infrastructure
 ├── global.json             # pins the .NET SDK version
 ├── .env                    # local secrets — never committed
@@ -896,4 +907,5 @@ link will be part of the frontend from the moment one exists.
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Every design decision, including the alternatives that were rejected and why — data model, the second backend, nutrition, images, multi-user, and the accepted audit findings |
 | [tools/README.md](tools/README.md) | Where imported recipe data comes from, the licence attached to it, and how to reproduce the converted file |
 | [requests.http](requests.http) | Example requests, runnable against either backend |
+| [http-client.env.json](http-client.env.json) | The two httpYac environments `requests.http` runs in |
 | [CLAUDE.md](CLAUDE.md) | Working agreement and project context |
