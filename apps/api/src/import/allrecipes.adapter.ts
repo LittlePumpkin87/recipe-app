@@ -90,7 +90,7 @@ function toNumberedList(instructions: string[]): string {
         .map((instruction, index) => `${index + 1}. ${instruction.trim()}`)
         .join('\n');
 }
-
+//maps units from database to enums
 const UNITS = new Map<string, Unit>([
     ['cup', Unit.CUP],
     ['cups', Unit.CUP],
@@ -156,8 +156,6 @@ const UNITS = new Map<string, Unit>([
     ['bottles', Unit.BOTTLE],
 ]);
 
-const RAW_INPUT = /^\S+ \(([^)]*)\) (\w+)/;
-
 const SIZE_WORDS = new Set([
     'large',
     'medium',
@@ -171,6 +169,8 @@ const SIZE_WORDS = new Set([
 ]);
 
 const NOTE_LENGTH = 80;
+const RAW_INPUT = /^\S+ \(([^)]*)\) (\w+)/;
+const FLUID_OUNCE_NAME = /^ounces? /;
 
 export function toImportIngredientLines(
     ingredients: AllrecipesIngredient[],
@@ -194,6 +194,15 @@ function toIngredientLine(
     if (unit) {
         return { name, amount, unit, note: toNote(misc) };
     }
+    if (word === 'fluid' && FLUID_OUNCE_NAME.test(name)) {
+        return {
+            name: name.replace(FLUID_OUNCE_NAME, ''),
+            amount,
+            unit: Unit.FLUID_OUNCE,
+            note: toNote(misc),
+        };
+    }
+
     if (SIZE_WORDS.has(word)) {
         return {
             name,
@@ -202,6 +211,7 @@ function toIngredientLine(
             note: toNote(`${word} ${misc}`),
         };
     }
+    // fetch correct parts for amount and unit
     if (word === '') {
         const match = RAW_INPUT.exec(rawLine);
         const unit = match ? UNITS.get(match[2].toLowerCase()) : undefined;
@@ -235,7 +245,7 @@ function toAmount(quantity: string): number | undefined {
 }
 
 function toNote(text: string): string | undefined {
-    const note = text.trim();
+    const note = text.replace(/\s+/g, ' ').trim();
     if (note === '') {
         return undefined;
     }

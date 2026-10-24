@@ -26,15 +26,24 @@ families, every factor exact and whole:
 | metric weight | `GRAM`, `KILOGRAM` | 1 kg = 1000 g |
 | metric volume | `MILLILITER`, `LITER` | 1 l = 1000 ml |
 | imperial weight | `OUNCE`, `POUND` | 1 lb = 16 oz |
-| US volume | `TEASPOON`, `TABLESPOON`, `CUP`, `PINT`, `QUART` | 1 tbsp = 3 tsp, 1 cup = 48 tsp, 1 pint = 96 tsp, 1 quart = 192 tsp |
+| US volume | `TEASPOON`, `TABLESPOON`, `FLUID_OUNCE`, `CUP`, `PINT`, `QUART` | 1 tbsp = 3 tsp, 1 fl oz = 6 tsp, 1 cup = 48 tsp, 1 pint = 96 tsp, 1 quart = 192 tsp |
 
 Nothing crosses between families. Grams to ounces would be exact but mixes
 systems for no gain. Cups to grams is not a conversion at all: a cup of flour
 and a cup of oil weigh differently, so it needs a density per ingredient — which
 is exactly what [Nutrition](#nutrition) stage 2 collects and is expressly barred
 from reaching the shopping list. `PIECE`, `CLOVE`, `SLICE`, `PACK`, `CAN`,
-`PINCH` and `BUNCH` belong to no family; they add up with themselves and with
-nothing else.
+`BOTTLE`, `PINCH` and `BUNCH` belong to no family; they add up with themselves
+and with nothing else.
+
+**`OUNCE` is weight, `FLUID_OUNCE` is volume.** Added on 23 October 2026 with
+`BOTTLE`, both for the allrecipes import. The source writes "5 fluid ounces
+heavy cream" about 2,000 times. Mapping that to `OUNCE` would put a volume into
+the weight family, and the shopping list would add 5 fl oz of cream to 8 oz of
+cheese. A fluid ounce is exactly 2 tablespoons, so it joins the US volume family
+with a whole factor. `BOTTLE` is a container like `CAN` and `PACK`: its size
+varies, so it stays outside every family, and the size from the source ("750
+milliliter") goes into the line's `note`.
 
 The sum is computed in the family's smallest unit, which keeps the arithmetic
 whole, and the unit it is displayed in follows the magnitude: 1500 g reads as
