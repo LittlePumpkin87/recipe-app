@@ -451,7 +451,7 @@ lose track of which lines are yours.
 
 ### Bulk import: allrecipes
 
-`src/import/import-allrecipes.ts` fills the database with about 46,500 English
+`src/import/import-allrecipes.ts` fills the database with about 45,000 English
 recipes from a public allrecipes.com dump. Where the data comes from, its
 licence and how to produce `data/allrecipes.ndjson` from it is described in
 [tools/README.md](tools/README.md). The data stays local; none of it is in this
@@ -485,14 +485,38 @@ either — the `ValidationPipe` belongs to HTTP — so the adapter
 | `duplicates` | refused by the unique index on (`source_name`, `external_id`) — the source holds about 2,100 copies |
 | `failed` | any other error; the source URL is printed |
 
-The run on 19 October 2026 read 50,513 lines: 46,562 imported, 1,910 skipped,
-2,039 duplicates, 2 failed.
+The run on 24 October 2026 read 50,513 lines: 45,083 imported, 3,451 skipped,
+1,977 duplicates, 2 failed.
+
+**How a line is read.** The source splits every ingredient line into name,
+quantity, unit and a remainder. Most of the time that split is usable; where it
+is not, the adapter falls back on the original line (`Ingredients_Raw`):
+
+| Source line | Stored as |
+|---|---|
+| `2 cups white sugar` | `white sugar`, 2, `CUP` |
+| `1 (18.25 ounce) package yellow cake mix` | `yellow cake mix`, 1, `PACK`, note `18.25 ounce` |
+| `5 fluid ounces heavy cream` | `heavy cream`, 5, `FLUID_OUNCE` |
+| `salt and ground black pepper to taste` | the whole line as the name, no amount, no unit |
+
+The second row: the source leaves the unit empty and drops the decimal point
+from the size, so the container word and the size are taken from the original
+line. The third: the source cuts "fluid ounces" in half and leaves "ounces" at
+the front of the name. The last: the source moves the first word into the unit
+and keeps `and black pepper to taste` as the name. Any name that begins with
+`and `, `or ` or `to `, or contains `to taste`, is replaced by the original line.
+About 200 such phrases become ingredients of their own, almost all of them salt
+and pepper.
 
 **What gets skipped.** A recipe without a recipe id in its URL, without
 instructions or ingredients, with a title over 100 characters, or with an
 ingredient whose name is empty or begins with a dash or a digit. The last rule
 catches lines where the source's parser did not separate amount and name —
 `1 1/4 cups white sugar` arrives as name `14 cups white sugar` with amount 1.
+The same rule applies to an original line that replaces a broken name, because
+it becomes the name: `2 cups cooked and cooled rice` would store the amount in
+the ingredient, so the recipe is skipped (about 1,500 recipes). A proper parser
+for these lines comes with the URL import (#20).
 See [Data model decisions](docs/DECISIONS.md#data-model-decisions).
 
 **The two failures are known.** Both are copies of recipe 237833, "Cao Lầu",

@@ -35,6 +35,9 @@ export function toImportRecipeInput(
 ): ImportRecipeInput | null {
     const title = record.Name.trim();
     const externalId = record.URL?.match(RECIPE_URL)?.[1];
+    const rawLines = Array.isArray(record.Ingredients_Raw)
+        ? record.Ingredients_Raw
+        : [];
     if (
         !externalId ||
         title.length > 100 ||
@@ -42,11 +45,16 @@ export function toImportRecipeInput(
         record.Instructions.length === 0 ||
         !Array.isArray(record.Ingredients) ||
         record.Ingredients.length === 0 ||
-        record.Ingredients.some(
-            (ingredient) =>
-                ingredient.ingredient.trim() === '' ||
-                INVALID_INGREDIENT_NAME.test(ingredient.ingredient.trim()),
-        )
+        record.Ingredients.some((ingredient, index) => {
+            const name = ingredient.ingredient.trim();
+            const rawLine = (rawLines[index] ?? '').trim();
+            return (
+                name === '' ||
+                INVALID_INGREDIENT_NAME.test(name) ||
+                (hasBrokenName(name) &&
+                    (rawLine === '' || INVALID_INGREDIENT_NAME.test(rawLine)))
+            );
+        })
     ) {
         return null;
     }
@@ -58,10 +66,7 @@ export function toImportRecipeInput(
         prepMinutes: prepMinutes > 0 ? prepMinutes : undefined,
         totalMinutes: totalMinutes > 0 ? totalMinutes : undefined,
         servings: toServings(record.Servings),
-        ingredients: toImportIngredientLines(
-            record.Ingredients,
-            Array.isArray(record.Ingredients_Raw) ? record.Ingredients_Raw : [],
-        ),
+        ingredients: toImportIngredientLines(record.Ingredients, rawLines),
         sourceName: SOURCE_NAME,
         externalId,
         sourceUrl: record.URL!,
@@ -171,6 +176,7 @@ const SIZE_WORDS = new Set([
 const NOTE_LENGTH = 80;
 const RAW_INPUT = /^\S+ \(([^)]*)\) (\w+)/;
 const FLUID_OUNCE_NAME = /^ounces? /;
+const INGREDIENT_PREFIX = /^(and|or|to|into) /;
 
 export function toImportIngredientLines(
     ingredients: AllrecipesIngredient[],
@@ -179,6 +185,36 @@ export function toImportIngredientLines(
     return ingredients.map((ingredient, index) => {
         return toIngredientLine(ingredient, rawLines[index] ?? '');
     });
+}
+//fetch if an ingredient is a whole sentence like "salt and pepper to taste" or similar
+function hasBrokenName(name: string): boolean {
+    return INGREDIENT_PREFIX.test(name) || name.includes('to taste');
+}
+//fetch correct segments for units and amount per ingredient line
+function toLineWithoutUnit(
+    name: string,
+    amount: number | undefined,
+    misc: string,
+    rawLine: string,
+): CreateRecipeIngredientDto {
+    const match = RAW_INPUT.exec(rawLine);
+    const unit = match ? UNITS.get(match[2].toLowerCase()) : undefined;
+    if (match && unit) {
+        const size = match[1];
+        const brokenSize = size.replace(/[./]/g, '');
+        return {
+            name,
+            amount,
+            unit: amount === undefined ? undefined : unit,
+            note: toNote(`${size} ${misc.replace(brokenSize, '')}`),
+        };
+    }
+    return {
+        name,
+        amount,
+        unit: amount === undefined ? undefined : Unit.PIECE,
+        note: toNote(misc),
+    };
 }
 
 function toIngredientLine(
@@ -189,8 +225,13 @@ function toIngredientLine(
     const name = ingredient.ingredient.trim();
     const misc = ingredient.misc.trim();
     const amount = toAmount(ingredient.quantity);
-
     const unit = UNITS.get(word);
+
+    if (hasBrokenName(name)) {
+        return {
+            name: rawLine.trim(),
+        };
+    }
     if (unit) {
         return { name, amount, unit, note: toNote(misc) };
     }
@@ -202,7 +243,6 @@ function toIngredientLine(
             note: toNote(misc),
         };
     }
-
     if (SIZE_WORDS.has(word)) {
         return {
             name,
@@ -211,27 +251,10 @@ function toIngredientLine(
             note: toNote(`${word} ${misc}`),
         };
     }
-    // fetch correct parts for amount and unit
     if (word === '') {
-        const match = RAW_INPUT.exec(rawLine);
-        const unit = match ? UNITS.get(match[2].toLowerCase()) : undefined;
-        if (match && unit) {
-            const size = match[1];
-            const brokenSize = size.replace(/[./]/g, '');
-            return {
-                name,
-                amount,
-                unit: amount === undefined ? undefined : unit,
-                note: toNote(`${size} ${misc.replace(brokenSize, '')}`),
-            };
-        }
-        return {
-            name,
-            amount,
-            unit: amount === undefined ? undefined : Unit.PIECE,
-            note: toNote(misc),
-        };
+        return toLineWithoutUnit(name, amount, misc, rawLine);
     }
+
     return { name, amount, note: toNote(rawLine || misc) };
 }
 
