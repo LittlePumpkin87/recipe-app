@@ -1,7 +1,8 @@
 # tools
 
-One-off utilities that prepare external data for import. They belong to neither
-backend and are not part of the running application.
+Utilities that belong to neither backend and are not part of the running
+application: one prepares external data for import, one compares the two
+backends in CI.
 
 The data itself is **not** in this repository — `data/` is ignored. What is kept
 here is the procedure, so that a local database can be rebuilt from the same
@@ -92,3 +93,43 @@ Two notes for the importer:
   `external_id` lets the existing unique constraint on
   (`source_name`, `external_id`) reject them, so the import is idempotent and
   the duplicates need no separate handling.
+
+## `compare-responses.ts`
+
+Checks that the NestJS and the ASP.NET Core backend answer `requests.http`
+identically. The `??` assertions in that file test each backend on its own;
+both can pass all of them and still disagree, for example on a renamed field.
+This script puts the two runs side by side.
+
+### Usage
+
+Run the requests once per backend, each time after a fresh seed, then compare:
+
+```bash
+npx httpyac send requests.http --all -e nest --json -o body > /tmp/nest.json
+npx httpyac send requests.http --all -e dotnet --json -o body > /tmp/dotnet.json
+node tools/compare-responses.ts /tmp/nest.json /tmp/dotnet.json
+```
+
+Node 24 runs the file directly by stripping the types, so it only uses syntax
+that can be erased: no `enum`, no parameter properties. Exit code 0 means both
+runs agree, 1 lists every difference on stderr.
+
+### Rules
+
+- Requests are matched by position; both runs use the same file.
+- The status code is compared for every request, except for the deliberate
+  differences listed in `ALLOWED_STATUS_DIFFERENCES` by request title. Renaming
+  such a request in `requests.http` turns the pipeline red until the list is
+  updated.
+- Bodies are compared only for 2xx. Error bodies differ on purpose — NestJS has
+  its own format, ASP.NET Core returns ProblemDetails.
+- `id` and `ingredientId` are dropped at every level, since each run generates
+  new UUIDs. Responses carry no timestamps.
+- Object keys are sorted before comparing, because the two serializers order
+  them differently.
+- Arrays keep their order: ingredient order (`position`) is part of the
+  contract.
+- An entry without a response on both sides is skipped: httpyac lists every
+  `###` block, including the chapter headings that hold no request.
+- A response on only one side (backend not reachable) counts as a difference.
