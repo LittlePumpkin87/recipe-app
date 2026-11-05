@@ -42,7 +42,7 @@ export function toRecipeDetail(recipe: Recipe): RecipeDetailDto {
         description: recipe.description,
         instructions: recipe.instructions,
         id: recipe.id,
-        name: recipe.title,
+        title: recipe.title,
         servings: recipe.servings,
         prepMinutes: recipe.prepMinutes,
         totalMinutes: recipe.totalMinutes,
@@ -65,7 +65,7 @@ type RecipeListItem = Prisma.RecipeGetPayload<{
 export function toRecipeListItem(recipe: RecipeListItem): RecipeListItemDto {
     return {
         id: recipe.id,
-        name: recipe.title,
+        title: recipe.title,
         servings: recipe.servings,
         prepMinutes: recipe.prepMinutes,
         totalMinutes: recipe.totalMinutes,
