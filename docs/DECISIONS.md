@@ -865,8 +865,9 @@ it:
   imported image is either downloaded once or not shown — decided with V3. Its
   copyright stays with the source, one more reason imported recipes never become
   public (see [Multi-user (V4)](#multi-user-v4)).
-- **Uploads go through `multer`.** The patched version is forced by an override;
-  see [Known audit findings](#known-audit-findings).
+- **Uploads go through `multer`.** Check `npm audit` for it before the upload
+  endpoint ships; see [Known audit findings](#known-audit-findings) for why it
+  was once overridden.
 
 ---
 
@@ -991,7 +992,17 @@ Do **not** run `npm audit fix --force` here: it "resolves" the report by
 downgrading `prisma` to 6.12.0, which would break the version parity between
 `prisma` and `@prisma/client` that Prisma requires.
 
-### `multer`: overridden
+### `multer`: override removed
+
+**Removed on 05.11.2026.** `@nestjs/platform-express` 12.3.3 pins `multer`
+`2.5.0` itself, which fixes GHSA-q7qp-rjg7-q26m (high, denial of service through
+a pending `fileFilter`). By then the override had been raised to `2.4.0` and was
+the reason `npm audit` still reported the advisory: it held the tree on the
+vulnerable version that the parent had already moved past. An override pins a
+version against every future update, so check each one after `npm update`.
+
+The history below explains why it existed and still applies to the remaining
+overrides.
 
 `@nestjs/platform-express` 12.0.1 pins `multer` to exactly `2.2.0`, which has
 four advisories — denial of service through crafted field names and aborted
@@ -1033,6 +1044,32 @@ rm package-lock.json && npm install
 That also moves every other package to the newest version its range allows —
 here 95 packages, none across a major version — so run the API, the lint and the
 requests afterwards.
+
+### `glob`, `minimatch`: overridden
+
+Jest 30.5.2, the newest release, still pulls `glob` 10 and 13 and `minimatch`
+9 and 10, which carry moderate advisories (among them GHSA-3g3m-2fjr-6pw4,
+traversal after an aborted `glob`). The fixes are in `glob` 14.0.3 and
+`minimatch` 11.0.4, so the root `package.json` forces them:
+
+```json
+"overrides": { "glob": "^14.0.3", "minimatch": "^11.0.4" }
+```
+
+Both are test and build tooling: `npm audit --omit=dev` reported nothing before
+the override. They are overridden anyway, because a developer machine is an
+attack target too. Both are a major version jump for their parents — Jest,
+`test-exclude` and `@nestjs/cli` — so `npm run build` and the test run are the
+check. Remove the overrides once Jest depends on the fixed versions itself. As
+with `multer`, `npm ls` may still print `invalid` next to them.
+
+### `deepmerge`: accepted
+
+Also pulled in by Jest (`jest-config`). GHSA-gcqx-w48m-w2h4, prototype
+poisoning in `mergeObject()`, low. Every version from 4.2.0 is affected,
+including the newest, 4.3.1, so there is nothing to override to. It only merges
+Jest's own configuration. `npm audit fix --force` "fixes" it by downgrading Jest
+to 25 — do not run it.
 
 ### `qs`: updated
 

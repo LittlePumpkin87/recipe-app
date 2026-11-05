@@ -30,7 +30,8 @@
         "import:allrecipes": "npm run import:allrecipes -w api"
     },
     "overrides": {
-        "multer": "2.4.0"
+        "glob": "^14.0.3",
+        "minimatch": "^11.0.4"
     },
     "devDependencies": {
         "httpyac": "^6.16.7"
