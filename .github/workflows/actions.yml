@@ -57,4 +57,26 @@ jobs:
 
       - name: create database seed
         run: npm run db:seed
-  
+
+      - name: start Nest API
+        run: npm run serve:nest > nest.log 2>&1 &
+      
+      - name: start .NET API
+        run: npm run serve:dotnet > dotnet.log 2>&1 &
+
+      - name: Wait for Nest API
+        run: timeout 60 bash -c 'until curl -sf http://localhost:3000/recipes > /dev/null; do sleep 1; done'
+
+      - name: Wait for .NET API
+        run: timeout 60 bash -c 'until curl -sf http://localhost:5000/recipes > /dev/null; do sleep 1; done'
+     
+      - name: Compare .NET and Nest
+        run: npm run compare
+
+      - name: Show server logs
+        if: failure()
+        run: |
+          echo "=== nest ==="
+          cat nest.log
+          echo "=== dotnet ==="
+          cat dotnet.log
