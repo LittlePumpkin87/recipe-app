@@ -237,13 +237,14 @@ root using the `-w` flag:
 npm run start:dev -w api    # watch mode
 npm run start:prod -w api   # run the compiled build from dist/
 npm run build -w api        # production build
-npm run test -w api         # unit tests
-npm run test:e2e -w api     # end-to-end tests
-npm run test:cov -w api     # unit tests with coverage report
-npm run lint -w api         # oxlint over src/ and test/
-npm run format -w api       # prettier over src/ and test/
+npm run lint -w api         # oxlint over src/
+npm run format -w api       # prettier over src/
 npm install <pkg> -w api    # add a dependency to the API, not to the root
 ```
+
+There is no test runner at the moment. Jest came with the Nest scaffold and was
+removed before any real test existed; see "deepmerge: removed with Jest" in
+`docs/DECISIONS.md`. The runner is chosen with the first test ticket.
 
 Always pass `-w api` when installing. Because npm workspaces hoist packages
 into the root `node_modules`, an import can resolve successfully even though

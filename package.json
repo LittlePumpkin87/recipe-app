@@ -30,7 +30,6 @@
         "import:allrecipes": "npm run import:allrecipes -w api"
     },
     "overrides": {
-        "glob": "^14.0.3",
         "minimatch": "^11.0.4"
     },
     "devDependencies": {
@@ -40,7 +39,6 @@
         "@prisma/engines@7.10.1": true,
         "esbuild@0.28.2": true,
         "prisma@7.10.1": true,
-        "@parcel/watcher": false,
         "protobufjs": false
     }
 }

@@ -1045,23 +1045,24 @@ That also moves every other package to the newest version its range allows —
 here 95 packages, none across a major version — so run the API, the lint and the
 requests afterwards.
 
-### `glob`, `minimatch`: overridden
+### `minimatch`: overridden
 
-Jest 30.5.2, the newest release, still pulls `glob` 10 and 13 and `minimatch`
-9 and 10, which carry moderate advisories (among them GHSA-3g3m-2fjr-6pw4,
-traversal after an aborted `glob`). The fixes are in `glob` 14.0.3 and
-`minimatch` 11.0.4, so the root `package.json` forces them:
+`@nestjs/cli` pulls `minimatch` 10, which carries a moderate advisory; the fix
+is in 11.0.4, so the root `package.json` forces it:
 
 ```json
-"overrides": { "glob": "^14.0.3", "minimatch": "^11.0.4" }
+"overrides": { "minimatch": "^11.0.4" }
 ```
 
-Both are test and build tooling: `npm audit --omit=dev` reported nothing before
-the override. They are overridden anyway, because a developer machine is an
-attack target too. Both are a major version jump for their parents — Jest,
-`test-exclude` and `@nestjs/cli` — so `npm run build` and the test run are the
-check. Remove the overrides once Jest depends on the fixed versions itself. As
-with `multer`, `npm ls` may still print `invalid` next to them.
+It is build tooling and never ships, but it is overridden anyway, because a
+developer machine is an attack target too. It is a major version jump for
+`@nestjs/cli`, so `npm run build` is the check. Remove the override once
+`@nestjs/cli` depends on 11 itself. As with `multer`, `npm ls` may still print
+`invalid` next to it.
+
+Until 05.11.2026 `glob` was overridden as well (GHSA-3g3m-2fjr-6pw4,
+traversal after an aborted `glob`). Only Jest pulled it, so the override went
+with Jest.
 
 ### Install scripts: `allowScripts`
 
@@ -1075,7 +1076,6 @@ deciding (05.11.2026):
 | `@prisma/engines` | downloads the engine binary used by `migrate` and `db seed` | allowed, pinned |
 | `esbuild` (via `tsx`) | verifies or installs the platform binary | allowed, pinned |
 | `prisma` | checks the Node version before installing | allowed, pinned |
-| `@parcel/watcher` (via Jest) | builds from source only when asked to; otherwise nothing | denied |
 | `protobufjs` (via httpyac) | prints a version-scheme warning | denied |
 
 Allowed entries are pinned to the exact version, which is the point: a new
@@ -1083,13 +1083,27 @@ release runs its script only after it has been looked at. After updating one of
 these packages, `npm install-scripts ls` lists it again; read the new script,
 then `npm install-scripts approve <pkg>`. Denials are by name and never expire.
 
-### `deepmerge`: accepted
+### `deepmerge`: removed with Jest
 
-Also pulled in by Jest (`jest-config`). GHSA-gcqx-w48m-w2h4, prototype
-poisoning in `mergeObject()`, low. Every version from 4.2.0 is affected,
-including the newest, 4.3.1, so there is nothing to override to. It only merges
-Jest's own configuration. `npm audit fix --force` "fixes" it by downgrading Jest
-to 25 — do not run it.
+GHSA-gcqx-w48m-w2h4, prototype poisoning in `mergeObject()`: a `__proto__` key
+in the input sets the prototype of the merged result, so it inherits properties
+nobody assigned. The reporter scores it CVSS 7.5, high (`I:H`); the GitHub
+Advisory Database, which `npm audit` reads, scores it 5.3 (`I:L`) and labels it
+low. The difference is whether a poisoned object can corrupt data that matters —
+for code that merges a request body over defaults and then checks a flag, it
+can. Every version from 4.2.0 is affected, including the newest, 4.3.1, and the
+maintainer has declined to fix it, so there was nothing to override to.
+
+The only path was `jest` → `@jest/core` → `jest-config` → `deepmerge`. There
+were no real tests yet — only the Nest scaffold specs, which no longer ran under
+TypeScript 6 — so Jest was removed on 05.11.2026 instead of being patched. That
+also removed the `glob` override and the `@parcel/watcher` entry in
+`allowScripts`.
+
+The test runner is chosen with the first test ticket. Vitest and `node:test`
+are the candidates; Nest relies on `emitDecoratorMetadata`, which neither
+esbuild nor Node's type stripping emits, so either needs swc. Check
+`npm ls deepmerge` before settling on one.
 
 ### `qs`: updated
 
@@ -1118,8 +1132,8 @@ finding actually affects the shipped application, inspect the path instead:
 npm ls <package-name>
 ```
 
-If every path runs through a devDependency such as `prisma`, `@nestjs/cli` or
-`jest`, the code is build tooling and never reaches production.
+If every path runs through a devDependency such as `prisma` or `@nestjs/cli`,
+the code is build tooling and never reaches production.
 
 Do not run `npm audit fix --force`: it resolves the report by downgrading
 `@nestjs/mau` to 0.0.6, which is not a fix.
