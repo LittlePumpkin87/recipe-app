@@ -20,7 +20,7 @@ import { PartialType } from '@nestjs/mapped-types';
 
 export interface RecipeListItemDto {
     id: string;
-    title: string;
+    name: string;
     servings: number | null;
     prepMinutes: number | null;
     totalMinutes: number | null;
