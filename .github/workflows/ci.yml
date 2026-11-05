@@ -1,11 +1,10 @@
-name: test build
-
+name: CI
 on:
   push:
   pull_request:
 
 jobs:
-  build:
+  build-and-compare:
     runs-on: ubuntu-latest
 
     services:
