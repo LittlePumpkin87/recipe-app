@@ -1063,6 +1063,26 @@ attack target too. Both are a major version jump for their parents — Jest,
 check. Remove the overrides once Jest depends on the fixed versions itself. As
 with `multer`, `npm ls` may still print `invalid` next to them.
 
+### Install scripts: `allowScripts`
+
+Since npm 11.16, the root `package.json` can list which dependencies may run
+`preinstall`, `install` or `postinstall` scripts. It is advisory today and is
+meant to block unlisted scripts in a later release. Each script was read before
+deciding (05.11.2026):
+
+| Package | Script does | Entry |
+|---|---|---|
+| `@prisma/engines` | downloads the engine binary used by `migrate` and `db seed` | allowed, pinned |
+| `esbuild` (via `tsx`) | verifies or installs the platform binary | allowed, pinned |
+| `prisma` | checks the Node version before installing | allowed, pinned |
+| `@parcel/watcher` (via Jest) | builds from source only when asked to; otherwise nothing | denied |
+| `protobufjs` (via httpyac) | prints a version-scheme warning | denied |
+
+Allowed entries are pinned to the exact version, which is the point: a new
+release runs its script only after it has been looked at. After updating one of
+these packages, `npm install-scripts ls` lists it again; read the new script,
+then `npm install-scripts approve <pkg>`. Denials are by name and never expire.
+
 ### `deepmerge`: accepted
 
 Also pulled in by Jest (`jest-config`). GHSA-gcqx-w48m-w2h4, prototype

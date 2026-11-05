@@ -35,5 +35,12 @@
     },
     "devDependencies": {
         "httpyac": "^6.16.7"
+    },
+    "allowScripts": {
+        "@prisma/engines@7.10.1": true,
+        "esbuild@0.28.2": true,
+        "prisma@7.10.1": true,
+        "@parcel/watcher": false,
+        "protobufjs": false
     }
 }
