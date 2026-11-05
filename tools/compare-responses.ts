@@ -35,7 +35,7 @@ function clean(value: unknown): unknown {
     if (value !== null && typeof value === 'object') {
         const record = value as Record<string, unknown>;
         const sorted: Record<string, unknown> = {};
-        for (const key of Object.keys(record).sort()) {
+        for (const key of Object.keys(record).sort((a, b) => a.localeCompare(b))) {
             if (!IGNORED_KEYS.has(key)) {
                 sorted[key] = clean(record[key]);
             }
@@ -103,4 +103,6 @@ for (const problem of problems) {
 }
 if (problems.length > 0) {
     process.exitCode = 1;
+} else {
+    console.log('Success - No differences found')
 }

@@ -1,10 +1,25 @@
 {
     "name": "recipe-app",
+    "type": "module",
     "private": true,
     "license": "AGPL-3.0-only",
     "workspaces": [
         "apps/*"
     ],
+    "scripts": {
+        "db:up": "docker compose up -d db",
+        "db:psql": "docker compose exec db psql -U recipe -d recipe",
+        "db:migrate": "npm exec -w api -- prisma migrate dev",
+        "db:deploy": "npm exec -w api -- prisma migrate deploy",
+        "db:seed": "npm exec -w api -- prisma db seed",
+        "db:studio": "npm exec -w api -- prisma studio",
+        "start:nest": "npm run start:dev -w api",
+        "start:dotnet": "dotnet run --project apps/api-dotnet",
+        "http:nest": "npm run db:seed && httpyac send requests.http --all -e nest",
+        "http:dotnet": "npm run db:seed && httpyac send requests.http --all -e dotnet",
+        "compare": "echo '=== NestJS (port 3000) ===' && npm run db:seed && httpyac send requests.http --all -e nest --json -o body > /tmp/nest.json && echo '=== ASP.NET Core (port 5000) ===' && npm run db:seed && httpyac send requests.http --all -e dotnet --json -o body > /tmp/dotnet.json && echo '=== Compare ===' && node tools/compare-responses.ts /tmp/nest.json /tmp/dotnet.json",
+        "import:allrecipes": "npm run import:allrecipes -w api"
+    },
     "overrides": {
         "multer": "2.4.0"
     },

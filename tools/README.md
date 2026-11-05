@@ -103,10 +103,19 @@ This script puts the two runs side by side.
 
 ### Usage
 
-Run the requests once per backend, each time after a fresh seed, then compare:
+Start both backends (`npm run start:nest`, `npm run start:dotnet`), then:
 
 ```bash
+npm run compare
+```
+
+That root script runs the requests once per backend, each time after a fresh
+seed, and then compares. Spelled out:
+
+```bash
+npm run db:seed
 npx httpyac send requests.http --all -e nest --json -o body > /tmp/nest.json
+npm run db:seed
 npx httpyac send requests.http --all -e dotnet --json -o body > /tmp/dotnet.json
 node tools/compare-responses.ts /tmp/nest.json /tmp/dotnet.json
 ```
@@ -114,6 +123,10 @@ node tools/compare-responses.ts /tmp/nest.json /tmp/dotnet.json
 Node 24 runs the file directly by stripping the types, so it only uses syntax
 that can be erased: no `enum`, no parameter properties. Exit code 0 means both
 runs agree, 1 lists every difference on stderr.
+
+`tools/tsconfig.json` exists for the editor only. TypeScript 6 no longer loads
+`@types/node` unless `types` names it, so without the file `node:fs` shows as
+an error. `erasableSyntaxOnly` flags the syntax Node cannot strip.
 
 ### Rules
 

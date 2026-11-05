@@ -81,27 +81,28 @@ cp .env.example .env
 openssl rand -hex 32
 
 # 3. Start the database
-docker compose up -d db
+npm run db:up
 
 # 4. Install dependencies
 npm install
 
 # 5. Create the database tables
-cd apps/api && npx prisma migrate dev && cd ../..
+npm run db:migrate
 
 # 6. Optional: fill the database with development data
-cd apps/api && npx prisma db seed && cd ../..
+npm run db:seed
 
 # 7. Start the API in watch mode
-npm run start:dev -w api
+npm run start:nest
 ```
 
 The API listens on http://localhost:3000.
 
 Step 5 is the one that is easy to miss: steps 1 to 4 leave you with a running
 but completely empty database. See [Prisma and migrations](#prisma-and-migrations)
-for what that command does and why it is the only one run from inside
-`apps/api`.
+for what that command does and why Prisma runs from inside `apps/api` (the
+`db:*` scripts change into it for you). All root scripts are listed in the
+Backend section below.
 
 Verify that the database is up:
 
@@ -116,7 +117,7 @@ them runs at a time. Steps 1 to 5 above still apply — the database and its tab
 are shared, and Prisma owns the schema either way.
 
 ```bash
-dotnet run --project apps/api-dotnet
+npm run start:dotnet
 ```
 
 It listens on http://localhost:5000, so it does not collide with the NestJS API
@@ -127,8 +128,12 @@ takes `{{host}}` from `http-client.env.json`, which defines two environments,
 switch; on the command line:
 
 ```bash
-npx httpyac send requests.http --all -e dotnet
+npm run http:dotnet    # reseeds, then sends every request to port 5000
 ```
+
+The script runs the seed first, because the requests expect the development
+data and a second run would otherwise hit 409 on ingredients the first run
+created.
 
 The file deliberately has no `@host` line: a variable defined in the `.http`
 file overrides the environment, and `--var` on the command line does not win
@@ -190,6 +195,27 @@ This is an npm workspaces monorepo. Application packages live under `apps/`.
 ```
 
 ## ⚙️ Backend
+
+The root `package.json` holds short scripts for the commands used every day:
+
+```bash
+npm run db:up          # start the Postgres container
+npm run db:psql        # SQL shell inside the container
+npm run db:migrate     # prisma migrate dev; add a name with: -- --name <name>
+npm run db:deploy      # prisma migrate deploy
+npm run db:seed        # wipe and rewrite the development data
+npm run db:studio      # prisma studio
+npm run start:nest     # NestJS in watch mode, port 3000
+npm run start:dotnet   # ASP.NET Core, port 5000
+npm run http:nest      # seed, then send requests.http to NestJS
+npm run http:dotnet    # seed, then send requests.http to ASP.NET Core
+npm run compare        # both runs, then tools/compare-responses.ts
+npm run import:allrecipes
+```
+
+`http:*` and `compare` run the seed, which empties all tables. Do not run them
+against a database that holds the bulk import. `compare` needs both backends
+running at the same time; see `tools/README.md`.
 
 The API is an npm workspace named `api`. Run its scripts from the repository
 root using the `-w` flag:
