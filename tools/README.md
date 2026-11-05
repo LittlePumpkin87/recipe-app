@@ -137,12 +137,15 @@ an error. `erasableSyntaxOnly` flags the syntax Node cannot strip.
   updated.
 - Bodies are compared only for 2xx. Error bodies differ on purpose — NestJS has
   its own format, ASP.NET Core returns ProblemDetails.
-- `id` and `ingredientId` are dropped at every level, since each run generates
+- Bodies are walked side by side and every differing value is reported with
+  its path, e.g. `#3[0].title: nest (missing), dotnet "Langos"`. A key present
+  on only one side shows as `(missing)`.
+- `id` and `ingredientId` are skipped at every level, since each run generates
   new UUIDs. Responses carry no timestamps.
-- Object keys are sorted before comparing, because the two serializers order
-  them differently.
+- Key order does not matter: keys are matched by name, so the two serializers
+  may order them differently.
 - Arrays keep their order: ingredient order (`position`) is part of the
-  contract.
+  contract, so elements are matched by index.
 - An entry without a response on both sides is skipped: httpyac lists every
   `###` block, including the chapter headings that hold no request.
 - A response on only one side (backend not reachable) counts as a difference.

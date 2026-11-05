@@ -1,5 +1,6 @@
 # 🎃 recipe-app — Self-Hosted Recipe & Shopping List
 
+[![CI](https://img.shields.io/github/actions/workflow/status/LittlePumpkin87/recipe-app/ci.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=CI)](https://github.com/LittlePumpkin87/recipe-app/actions/workflows/ci.yml)
 ![NestJS](https://img.shields.io/badge/NestJS-E0234E?style=for-the-badge&logo=nestjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET%2010-512BD4?style=for-the-badge&logo=dotnet&logoColor=white)

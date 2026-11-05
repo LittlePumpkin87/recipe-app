@@ -3,22 +3,22 @@
  * Usage: node tools/compare-responses.ts <nest.json> <dotnet.json>
  * Exits with 1 if any request differs in status or, for 2xx, in body.
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync } from "node:fs";
 
 type HttpResponse = { statusCode: number; body?: string };
 type RequestEntry = { name: string; response?: HttpResponse };
 type RunFile = { requests: RequestEntry[] };
 
-const IGNORED_KEYS = new Set(['id', 'ingredientId']);
+const IGNORED_KEYS = new Set(["id", "ingredientId"]);
 
 const ALLOWED_STATUS_DIFFERENCES = new Set([
-    'Valid UUID v4 -> 400 in Nest, 404 in .NET',
+    "Valid UUID v4 -> 400 in Nest, 404 in .NET",
 ]);
 
 // Reading
 
 function readRun(path: string): RequestEntry[] {
-    const file: RunFile = JSON.parse(readFileSync(path, 'utf8'));
+    const file: RunFile = JSON.parse(readFileSync(path, "utf8"));
     return file.requests;
 }
 
@@ -28,25 +28,44 @@ function isSuccess(statusCode: number): boolean {
     return statusCode >= 200 && statusCode < 300;
 }
 
-function clean(value: unknown): unknown {
-    if (Array.isArray(value)) {
-        return value.map(clean);
-    }
-    if (value !== null && typeof value === 'object') {
-        const record = value as Record<string, unknown>;
-        const sorted: Record<string, unknown> = {};
-        for (const key of Object.keys(record).sort((a, b) => a.localeCompare(b))) {
-            if (!IGNORED_KEYS.has(key)) {
-                sorted[key] = clean(record[key]);
-            }
-        }
-        return sorted;
-    }
-    return value;
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function normalizeBody(body: string | undefined): string {
-    return body ? JSON.stringify(clean(JSON.parse(body))) : '';
+function show(value: unknown): string {
+    return value === undefined ? "(missing)" : JSON.stringify(value);
+}
+
+function parseBody(body: string | undefined): unknown {
+    return body ? JSON.parse(body) : undefined;
+}
+
+function diffValues(
+    nest: unknown,
+    dotnet: unknown,
+    path: string,
+    out: string[],
+): void {
+    if (Array.isArray(nest) && Array.isArray(dotnet)) {
+        const length = Math.max(nest.length, dotnet.length);
+        for (let i = 0; i < length; i++) {
+            diffValues(nest[i], dotnet[i], `${path}.[${i}]`, out);
+        }
+        return;
+    }
+    if (isRecord(nest) && isRecord(dotnet)) {
+        const keys = new Set([...Object.keys(nest), ...Object.keys(dotnet)]);
+        for (const key of keys) {
+            if (IGNORED_KEYS.has(key)) {
+                continue;
+            }
+            diffValues(nest[key], dotnet[key], `${path}.${key}`, out);
+        }
+        return;
+    }
+    if (JSON.stringify(nest) !== JSON.stringify(dotnet)) {
+        out.push(`${path}: nest ${show(nest)}, dotnet ${show(dotnet)}`);
+    }
 }
 
 // Comparing
@@ -71,7 +90,9 @@ for (let i = 0; i < count; i++) {
         continue;
     }
     if (!nest || !dotnet) {
-        problems.push(`#${i + 1}: no response from ${nest ? 'dotnet' : 'nest'}`);
+        problems.push(
+            `#${i + 1}: no response from ${nest ? "dotnet" : "nest"}`,
+        );
         continue;
     }
     if (nest.statusCode !== dotnet.statusCode) {
@@ -87,13 +108,12 @@ for (let i = 0; i < count; i++) {
         continue;
     }
 
-    const left = normalizeBody(nest.body);
-    const right = normalizeBody(dotnet.body);
-    if (left !== right) {
-        problems.push(
-            `#${i + 1}: body differs\n  nest:   ${left}\n  dotnet: ${right}`,
-        );
-    }
+    diffValues(
+        parseBody(nest.body),
+        parseBody(dotnet.body),
+        `#${i + 1}`,
+        problems,
+    );
 }
 
 // Reporting
@@ -104,5 +124,5 @@ for (const problem of problems) {
 if (problems.length > 0) {
     process.exitCode = 1;
 } else {
-    console.log('Success - No differences found')
+    console.log("Success - No differences found");
 }
