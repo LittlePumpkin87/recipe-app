@@ -8,6 +8,23 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    services:
+      database:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+        ports:
+          - 5432:5432
+        options: >-
+            --health-cmd "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"
+            --health-interval 5s
+            --health-timeout 5s
+            --health-retries 10
+    env:
+      DATABASE_URL: "postgresql://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/${{ secrets.POSTGRES_DB }}?schema=public"
+
     steps:
       - name: check out code
         uses: actions/checkout@v5
@@ -34,4 +51,10 @@ jobs:
 
       - name: build .NET
         run: npm run build:dotnet
+      
+      - name: deploy db migration
+        run: npm run db:deploy
+
+      - name: create database seed
+        run: npm run db:seed
   
