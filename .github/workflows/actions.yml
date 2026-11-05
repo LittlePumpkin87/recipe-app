@@ -1,0 +1,37 @@
+name: test build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: check out code
+        uses: actions/checkout@v4
+
+      - name: set up node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: install npm packages
+        run: npm ci
+
+      - name: generate prisma client
+        run: npm run db:generate
+
+      - name: build Nest.JS
+        run: npm run build:nest
+
+      - name: build .NET
+        run: npm run build:dotnet
+  

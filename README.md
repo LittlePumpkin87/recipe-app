@@ -200,18 +200,29 @@ The root `package.json` holds short scripts for the commands used every day:
 
 ```bash
 npm run db:up          # start the Postgres container
+npm run db:down        # stop it, keep the data
 npm run db:psql        # SQL shell inside the container
+npm run db:backup      # pg_dump into backup.sql (gitignored)
+npm run db:restore     # load backup.sql into an empty database
+npm run db:generate    # prisma generate (the client is gitignored)
 npm run db:migrate     # prisma migrate dev; add a name with: -- --name <name>
 npm run db:deploy      # prisma migrate deploy
 npm run db:seed        # wipe and rewrite the development data
 npm run db:studio      # prisma studio
 npm run start:nest     # NestJS in watch mode, port 3000
 npm run start:dotnet   # ASP.NET Core, port 5000
+npm run build          # build both backends (build:nest, build:dotnet)
+npm run serve:nest     # run the NestJS build from dist/, no watch
+npm run serve:dotnet   # run the .NET build without rebuilding
 npm run http:nest      # seed, then send requests.http to NestJS
 npm run http:dotnet    # seed, then send requests.http to ASP.NET Core
 npm run compare        # both runs, then tools/compare-responses.ts
 npm run import:allrecipes
 ```
+
+`start:*` is for development, `serve:*` runs what `build` produced, as CI
+does. There is deliberately no script for `docker compose down -v`, which
+deletes the database volume.
 
 `http:*` and `compare` run the seed, which empties all tables. Do not run them
 against a database that holds the bulk import. `compare` needs both backends
