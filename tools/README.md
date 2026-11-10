@@ -1,8 +1,8 @@
 # tools
 
 Utilities that belong to neither backend and are not part of the running
-application: one prepares external data for import, one compares the two
-backends in CI.
+application: one prepares external data for import, two maintain the
+ingredient catalogue, one compares the two backends in CI.
 
 The data itself is **not** in this repository — `data/` is ignored. What is kept
 here is the procedure, so that a local database can be rebuilt from the same
@@ -93,6 +93,49 @@ Two notes for the importer:
   `external_id` lets the existing unique constraint on
   (`source_name`, `external_id`) reject them, so the import is idempotent and
   the duplicates need no separate handling.
+
+## Ingredient catalogue tools
+
+`ingredient-inventory.py` and `ingredient-coverage.py` built the ingredient
+catalogue in `apps/api/prisma/ingredient-catalog.json` and keep it maintainable.
+Why the catalogue exists and how it was built is in
+[DECISIONS.md](../docs/DECISIONS.md#data-model-decisions).
+
+Both read the lines with [`ingredient-parser-nlp`](https://github.com/strangetom/ingredient-parser)
+(MIT), which needs a virtual environment. Once, from the repository root:
+
+```bash
+python3 -m venv tools/.venv
+tools/.venv/bin/pip install -r tools/requirements.txt
+```
+
+The first run downloads an NLTK tagger to `~/nltk_data`.
+
+### `ingredient-inventory.py`
+
+```bash
+tools/.venv/bin/python tools/ingredient-inventory.py
+```
+
+Writes `data/ingredient-inventory.tsv`: every name the parser reads from
+`Ingredients_Raw`, by frequency, with the number of lines and recipes and one
+example line. Parsing the 105,687 distinct lines takes several minutes.
+
+### `ingredient-coverage.py`
+
+```bash
+tools/.venv/bin/python tools/ingredient-coverage.py
+```
+
+Prints how many recipes the catalogue maps completely and the names that most
+often block a recipe. That list is the work queue for extending the catalogue.
+The first run caches the parsed names in `data/parsed-lines.json`; delete the
+file after a dataset update. Result on 10 November 2026:
+
+```
+recipes: 50476, fully mapped: 27474 (54.4%)
+catalogue entries used by mapped recipes: 1192
+```
 
 ## `compare-responses.ts`
 

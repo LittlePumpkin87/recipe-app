@@ -1,0 +1,1 @@
+ingredient-parser-nlp==2.9.1
