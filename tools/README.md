@@ -181,7 +181,7 @@ an error. `erasableSyntaxOnly` flags the syntax Node cannot strip.
 - Bodies are compared only for 2xx. Error bodies differ on purpose — NestJS has
   its own format, ASP.NET Core returns ProblemDetails.
 - Bodies are walked side by side and every differing value is reported with
-  its path, e.g. `#3[0].title: nest (missing), dotnet "Langos"`. A key present
+  its path, e.g. `#3.[0].title: nest (missing), dotnet "Langos"`. A key present
   on only one side shows as `(missing)`.
 - `id` and `ingredientId` are skipped at every level, since each run generates
   new UUIDs. Responses carry no timestamps.

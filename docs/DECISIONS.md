@@ -123,9 +123,10 @@ ingredient appears under up to 216 spellings. Repairing that with rules and
 reviewed aliases would never end, and every V3 URL import would bring new
 spellings.
 
-The catalogue is the fixed list of ingredients the app knows. An import maps
-each line to a catalogue entry through its aliases. A recipe with a line that
-maps to nothing is skipped. Fewer recipes with a clean list beat all recipes
+The catalogue is the fixed list of ingredients the app knows. An import will map
+each line to a catalogue entry through its aliases, and a recipe with a line that
+maps to nothing will be skipped. *Planned for #19; as of 12 November 2026 no
+code reads the catalogue yet.* Fewer recipes with a clean list beat all recipes
 with a dirty one. The same lookup serves the V3 URL import, where an unknown
 name surfaces in the preview instead of creating a new ingredient.
 
@@ -156,7 +157,9 @@ table `ingredient_name` with one row per ingredient and locale. It would make a
 new language a matter of data instead of a migration, at the cost of a join on
 every recipe read, in Prisma and in EF Core. There will never be a third
 language, so that flexibility buys nothing. The API returns all names, the
-frontend picks one, the same way it renders a `Unit` value.
+frontend picks one, the same way it renders a `Unit` value. *Not migrated yet:
+the schema still has only `name` and `name_normalized`, and the catalogue file
+has no English plural (`enPlural`) so far.*
 
 **How the catalogue was built** (9–10 November 2026). The file is
 `apps/api/prisma/ingredient-catalog.json`, one entry per line, so a diff shows
@@ -180,7 +183,7 @@ that matters for anyone extending it:
    "red pepper") and checked a random sample of 40 entries.
 
 Result: 1,201 entries, 27,474 of 50,476 recipes (54.4 %) mapped completely.
-The rest are skipped by the import. To extend the catalogue, run the coverage
+The rest will be skipped by the import. To extend the catalogue, run the coverage
 tool: it lists the most frequent names that still block recipes.
 
 **What counts as one ingredient** (decided 10 November 2026). The rule is the
@@ -321,9 +324,9 @@ and a database to talk to.
 
 It works because the frontend only knows URLs and JSON. Both backends serve the
 same endpoints with the same request and response shapes, against the same
-PostgreSQL database. Only one of them runs at a time; `requests.http` tests
-either one by switching the httpYac environment (`nest` or `dotnet` in
-`http-client.env.json`).
+PostgreSQL database. `requests.http` tests either one by switching the httpYac
+environment (`nest` or `dotnet` in `http-client.env.json`). `npm run compare`
+and the CI pipeline run both at the same time and compare their responses.
 
 The order is deliberate. The NestJS API for V1 is completed first, so the .NET
 version has a working reference for every endpoint and only the framework is
@@ -543,7 +546,11 @@ readable line by line.
 builder.Services.AddDbContext<RecipeDbContext>(options =>
     options.UseNpgsql(
         builder.Configuration.GetConnectionString("Default"),
-        npgsql => npgsql.MapEnum<Unit>("unit")));
+        npgsql =>
+        {
+            npgsql.MapEnum<Unit>("unit");
+            npgsql.MapEnum<Language>("language");
+        }));
 ```
 
 **Generated files are never edited.** Everything hand-written goes into a
@@ -1227,6 +1234,9 @@ only for a MySQL datasource; this project uses PostgreSQL, and the CLI never
 ships with the application. The finding is dismissed in Dependabot as
 "vulnerable code is not actually used". `npm audit fix --force` would "resolve"
 it by downgrading `prisma` to 6.19.3.
+
+*Resolved upstream:* `prisma` 7.10.1 pins `mysql2` `3.24.4`, and `npm audit`
+reports no findings as of 12 November 2026.
 
 ### Reading audit output in this repo
 

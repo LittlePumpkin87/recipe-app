@@ -62,6 +62,8 @@ Under development. See [Roadmap](#roadmap) for what is and is not implemented.
 - Node.js 24 (see `.nvmrc`)
 - .NET SDK 10 (see `global.json`) — only for the second backend
 - Docker with Compose v2
+- Python 3 with a venv — only for the ingredient catalogue tools, see
+  `tools/README.md`
 - Optionally a PostgreSQL client (`postgresql-client`, DBeaver, pgAdmin) to
   connect to the database from the host
 
@@ -170,10 +172,11 @@ This is an npm workspaces monorepo. Application packages live under `apps/`.
 .
 ├── apps/
 │   ├── api/                # NestJS backend (workspace name: "api")
-│   │   ├── prisma/         # schema, migrations and seed.ts
+│   │   ├── prisma/         # schema, migrations, seed.ts, ingredient-catalog.json
 │   │   └── src/
 │   │       ├── common/             # helpers shared by seed and services
 │   │       ├── generated/prisma/   # Prisma client — generated, never edited
+│   │       ├── import/             # allrecipes adapter and import script
 │   │       ├── prisma/             # PrismaService, global
 │   │       ├── recipes/            # feature module
 │   │       └── ingredients/        # feature module
@@ -182,11 +185,12 @@ This is an npm workspaces monorepo. Application packages live under `apps/`.
 │       ├── Services/       # business logic and the only place queries live
 │       ├── Dtos/           # response records — one file per resource
 │       ├── Data/           # RecipeDbContext — scaffolded, plus one partial
-│       ├── Models/         # entity classes — scaffolded, plus the unit enum
-│       ├── Utility/        # UrlExtensions: DATABASE_URL → Npgsql
+│       ├── Models/         # entity classes — scaffolded, plus the Unit and Language enums
+│       ├── Exceptions/     # ConflictException and its handler (409)
+│       ├── Utility/        # DATABASE_URL → Npgsql, name normalizing, decimal validation
 │       └── Properties/     # launchSettings.json — local ports only
 ├── .config/                # dotnet-tools.json — pins dotnet-ef
-├── tools/                  # one-off data preparation — see tools/README.md
+├── tools/                  # data preparation, catalogue tools, CI compare script — see tools/README.md
 ├── data/                   # downloaded data sets — gitignored, never committed
 ├── requests.http           # example requests — tests either backend
 ├── http-client.env.json    # httpYac environments: nest (3000), dotnet (5000)
@@ -245,6 +249,14 @@ npm install <pkg> -w api    # add a dependency to the API, not to the root
 There is no test runner at the moment. Jest came with the Nest scaffold and was
 removed before any real test existed; see "deepmerge: removed with Jest" in
 `docs/DECISIONS.md`. The runner is chosen with the first test ticket.
+
+### CI
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push and
+pull request. It starts a PostgreSQL 18 service, builds both backends, applies
+the migrations, seeds, starts both APIs and runs `npm run compare`. On failure
+it prints both server logs. The workflow needs the repository secrets
+`POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_DB`.
 
 Always pass `-w api` when installing. Because npm workspaces hoist packages
 into the root `node_modules`, an import can resolve successfully even though
@@ -348,8 +360,9 @@ shows up as a 400 with a field name instead of a 500 with a database error.
 **Optional is not the same as nullable.** `@IsOptional()` skips every other rule
 when a value is `undefined` *or* `null`. That is right for a column that may be
 empty — `"description": null` clears the description — and wrong for one that
-may not: `"servings": null` would pass validation and then fail inside Prisma,
-because the column is `NOT NULL`, as a 500. Such fields use
+should not be: `"servings": null` would pass validation and be stored as
+`NULL`. The column itself is nullable since the `20261012120359_update`
+migration, so only the DTO keeps the value out. Such fields use
 `@ValidateIf((_, value) => value !== undefined)` instead: a missing value is
 skipped, `null` is validated and rejected with a 400. `UpdateRecipeDto` is built
 with `PartialType(CreateRecipeDto, { skipNullProperties: false })` for the same
@@ -358,7 +371,7 @@ reason — the option makes `PartialType` add that `@ValidateIf` rather than
 
 ## 🗄️ Data model
 
-Four models and one enum. The join table carries the amount, the unit and three
+Four models and two enums (`Unit`, `Language`). The join table carries the amount, the unit and three
 presentation fields in addition to the relation, which is why it is written out
 explicitly rather than left to Prisma's implicit many-to-many.
 
@@ -371,7 +384,7 @@ erDiagram
 
 | Model | Purpose |
 |---|---|
-| `Recipe` | Title, description, instructions, servings, `prepMinutes` and `totalMinutes`, optional import provenance. |
+| `Recipe` | Title, description, instructions, servings, `prepMinutes` and `totalMinutes`, `language` (default `DE`), optional import provenance. |
 | `Ingredient` | Central ingredient list. One row per ingredient, shared across recipes. |
 | `IngredientAlias` | Alternative spellings pointing at an ingredient ("zwiebeln" → "Zwiebel"). |
 | `RecipeIngredient` | Join table between the two, carrying `amount`, `unit`, a per-line `note`, a `groupLabel` and the `position` within the recipe. |
@@ -577,9 +590,11 @@ character in a text column. The recipe is left out.
 **Do not seed afterwards.** `npx prisma db seed` empties every table, imported
 recipes included.
 
-**Ingredient aliases are not applied yet.** "egg" and "eggs" become two
-ingredients. The alias lookup comes before the final import (#19); until then
-an import is a trial run.
+**The ingredient catalogue is not applied yet.** "egg" and "eggs" become two
+ingredients. The curated catalogue in `apps/api/prisma/ingredient-catalog.json`
+(1,201 entries) exists, but no code reads it yet. Mapping each import line to a
+catalogue entry comes before the final import (#19); until then an import is a
+trial run. See [Data model decisions](docs/DECISIONS.md#data-model-decisions).
 
 ### Prisma Studio
 
@@ -600,10 +615,9 @@ type a value the column will reject.
 **It writes through the Prisma client, so client-side behaviour applies.** `id`,
 `created_at` and `updated_at` all have database-level defaults — see the
 `db_level_defaults` migration — so a hand-written `INSERT` in psql that omits
-them works too. What psql does *not* do is `@updatedAt`: a database default only
-fires on INSERT, so an `UPDATE` in psql leaves `updated_at` at its old value,
-while the same edit in Studio moves it. If a row's timestamp looks stale, that
-is usually why.
+them works too. `updated_at` is set by database triggers (migration
+`20261012080553_updated_at_triggers`), so an `UPDATE` in psql moves it just like
+the same edit in Studio does.
 
 It is worth having open while building `POST /recipes`: seeding an ingredient by
 hand and watching the join rows appear is faster feedback than a test run.
@@ -700,9 +714,9 @@ mapper runs after the commit, outside the transaction.
 **Aliases are not consulted yet.** `resolveIngredientIds`, shared by
 `POST /recipes` and `PATCH /recipes/:id`, looks at `nameNormalized` only, so a
 name that exists solely as an `ingredientAlias.alias` becomes a new ingredient.
-The alias lookup is being added before the final bulk import (#19), in both
-backends; the aliases themselves will live in a file in the repository. There is
-deliberately no endpoint for managing aliases.
+The catalogue lookup is being added before the final bulk import (#19), in both
+backends; the catalogue lives in `apps/api/prisma/ingredient-catalog.json`.
+There is deliberately no endpoint for managing aliases.
 
 ### `DELETE /recipes/:id`: one statement, no transaction
 
@@ -786,7 +800,7 @@ Two consequences worth knowing:
   the display form of the first. There is no `PATCH /ingredients` in V1;
   rename it in Prisma Studio.
 - **Aliases are not checked here.** A name that exists only as an
-  `ingredientAlias.alias` is accepted as a new ingredient. The alias lookup
+  `ingredientAlias.alias` is accepted as a new ingredient. The catalogue lookup
   (#19) goes into the ingredient resolution shared by `POST /recipes` and
   `PATCH /recipes/:id`, not into this endpoint.
 
@@ -924,8 +938,9 @@ photo per recipe, see [Recipe images](docs/DECISIONS.md#recipe-images).
 
 **Build order within V1.** The API gets a second implementation before the
 application gets a frontend: the NestJS API is finished first, then rebuilt in
-ASP.NET Core, then the Angular frontend follows, and finally Docker Compose and
-a CI pipeline that builds both backends and runs the same requests against each.
+ASP.NET Core, then the Angular frontend follows, and finally Docker Compose.
+The CI pipeline that builds both backends and runs the same requests against
+each already exists, see [CI](#ci).
 See [Second backend: ASP.NET Core](docs/DECISIONS.md#second-backend-aspnet-core).
 
 ## 📄 License
@@ -945,7 +960,6 @@ link will be part of the frontend from the moment one exists.
 | File | Contents |
 |---|---|
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Every design decision, including the alternatives that were rejected and why — data model, the second backend, nutrition, images, multi-user, and the accepted audit findings |
-| [tools/README.md](tools/README.md) | Where imported recipe data comes from, the licence attached to it, and how to reproduce the converted file |
+| [tools/README.md](tools/README.md) | Where imported recipe data comes from, its licence, how to reproduce the converted file, the ingredient catalogue tools and the CI compare script |
 | [requests.http](requests.http) | Example requests, runnable against either backend |
 | [http-client.env.json](http-client.env.json) | The two httpYac environments `requests.http` runs in |
-| [CLAUDE.md](CLAUDE.md) | Working agreement and project context |
