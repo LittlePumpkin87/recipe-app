@@ -2,11 +2,13 @@
 # Written for httpYac (VS Code extension anweber.vscode-httpyac, CLI httpyac).
 # The same requests run against both backends. {{host}} comes from the
 # environment in http-client.env.json, never from this file:
-#   nest   = 3000  (apps/api,        npm run start:dev -w api)
-#   dotnet = 5000  (apps/api-dotnet, dotnet run)
-# In the editor, pick the environment with httpYac's environment switch. From the
-# command line:
-#   npx httpyac send requests.http --all -e dotnet
+#   nest   = 3000  (npm run start:nest)
+#   dotnet = 5000  (npm run start:dotnet)
+# In the editor, pick the environment with httpYac's environment switch;
+# without one, {{host}} is undefined. From the command line, seed included:
+#   npm run test:nest
+#   npm run test:dotnet
+#   npm run compare      (both backends running, compares the responses)
 # A @host line here would override the environment, so there is none.
 #
 # All seven endpoints exist on both sides. Where an answer differs on purpose,
@@ -21,7 +23,7 @@
 # A request carrying # @ref newRecipe sends the named request first if it has
 # no response yet in this session.
 #
-# The starting point is the seed (npx prisma db seed from apps/api): the recipes
+# The starting point is the seed (npm run db:seed): the recipes
 # Langos and Römertopfbrot, 17 ingredients.
 
 ### ───────────── GET /recipes ─────────────
@@ -111,6 +113,7 @@ Content-Type: application/json
 
 {
   "title": "Kartoffelsuppe",
+  "language": "DE",
   "description": "Reicht für zwei große Teller.",
   "servings": 2,
   "prepMinutes": 20,
@@ -136,6 +139,7 @@ Content-Type: application/json
 
 {
   "title": "Spiegelei",
+  "language": "DE",
   "instructions": "Butter in der Pfanne schmelzen, Ei hineingleiten lassen, salzen.",
   "ingredients": [
     { "name": "Ei", "amount": 2, "unit": "PIECE" },
@@ -151,6 +155,7 @@ Content-Type: application/json
 
 {
   "title": "Kartoffelsuppe für vier",
+  "language": "DE",
   "instructions": "Wie oben, alles verdoppelt.",
   "servings": 4,
   "ingredients": [
@@ -166,6 +171,23 @@ Content-Type: application/json
 
 {
   "title": "   ",
+  "language": "DE",
+  "instructions": "Kartoffeln schälen …",
+  "ingredients": [
+    { "name": "Kartoffeln", "amount": 800, "unit": "GRAM" }
+  ]
+}
+
+?? status == 400
+
+### Without language -> 400
+# The language decides where new ingredient names go (name_de or name_en), so
+# the client has to say it; the column default DE is not a guess for the API.
+POST {{host}}/recipes
+Content-Type: application/json
+
+{
+  "title": "Kartoffelsuppe",
   "instructions": "Kartoffeln schälen …",
   "ingredients": [
     { "name": "Kartoffeln", "amount": 800, "unit": "GRAM" }
@@ -181,6 +203,7 @@ Content-Type: application/json
 
 {
   "title": "Kartoffelsuppe",
+  "language": "DE",
   "instructions": "Kartoffeln schälen …",
   "ingredients": []
 }
@@ -193,6 +216,7 @@ Content-Type: application/json
 
 {
   "title": "Kartoffelsuppe",
+  "language": "DE",
   "instructions": "Kartoffeln schälen …",
   "ingredients": [
     { "amount": 800, "unit": "GRAM" }
@@ -209,6 +233,7 @@ Content-Type: application/json
 
 {
   "title": "Kartoffelsuppe",
+  "language": "DE",
   "instructions": "Kartoffeln schälen …",
   "sourceUrl": "https://example.org/kartoffelsuppe",
   "ingredients": [
@@ -225,6 +250,7 @@ Content-Type: application/json
 
 {
   "title": "Kartoffelsuppe",
+  "language": "DE",
   "instructions": "Kartoffeln schälen …",
   "ingredients": [
     { "name": "Mehl", "amount": 1, "unit": "EL" }
@@ -241,6 +267,7 @@ Content-Type: application/json
 
 {
   "title": "Kartoffelsuppe",
+  "language": "DE",
   "instructions": "Kartoffeln schälen …",
   "servings": null,
   "ingredients": [
@@ -256,6 +283,7 @@ Content-Type: application/json
 
 {
   "title": "Kartoffelsuppe",
+  "language": "DE",
   "instructions": "Kartoffeln schälen …",
   "prepMinutes": 0,
   "ingredients": [
@@ -272,6 +300,7 @@ Content-Type: application/json
 
 {
   "title": "Kartoffelsuppe",
+  "language": "DE",
   "instructions": "Kartoffeln schälen …",
   "ingredients": [
     { "name": "Mehl", "amount": 1.505, "unit": "TABLESPOON" }
@@ -286,6 +315,7 @@ Content-Type: application/json
 
 {
   "title": "Kartoffelsuppe",
+  "language": "DE",
   "instructions": "Kartoffeln schälen …",
   "ingredients": [
     { "name": "Mehl", "amount": 0, "unit": "TABLESPOON" }
@@ -360,6 +390,47 @@ Content-Type: application/json
 }
 
 ?? status == 200
+?? js response.parsedBody.ingredients[3]?.nameDe == Pfeffer
+?? js response.parsedBody.ingredients[3]?.nameEn isFalse
+
+### Switch the language and add a new ingredient -> 200, Cardamom lands in nameEn
+# The new ingredient takes the language of this request, not the stored one.
+# Without language in the body it would take the stored DE (see the case above).
+# @ref newRecipe
+PATCH {{host}}/recipes/{{newRecipe.id}}
+Content-Type: application/json
+
+{
+  "language": "EN",
+  "ingredients": [
+    { "name": "Kartoffeln", "amount": 800, "unit": "GRAM" },
+    { "name": "Cardamom", "amount": 1, "unit": "PINCH" }
+  ]
+}
+
+?? status == 200
+?? js response.parsedBody.ingredients[1]?.nameEn == Cardamom
+?? js response.parsedBody.ingredients[1]?.nameDe isFalse
+
+### language outside the enum -> 400
+# @ref newRecipe
+PATCH {{host}}/recipes/{{newRecipe.id}}
+Content-Type: application/json
+
+{ "language": "FR" }
+
+?? status == 400
+
+### language null -> 400 (may be omitted, but not cleared)
+# The column is NOT NULL. .NET tells "missing" from "null" with a flag in the
+# setter, as for title and servings.
+# @ref newRecipe
+PATCH {{host}}/recipes/{{newRecipe.id}}
+Content-Type: application/json
+
+{ "language": null }
+
+?? status == 400
 
 ### title null -> 400 (required, not clearable)
 # @ref newRecipe
@@ -421,6 +492,7 @@ Content-Type: application/json
 
 {
   "title": "Zum Löschen",
+  "language": "DE",
   "instructions": "Wird gleich wieder gelöscht.",
   "ingredients": [
     { "name": "Testzutat", "amount": 1, "unit": "PIECE" }
@@ -460,32 +532,32 @@ GET {{host}}/ingredients
 GET {{host}}/ingredients?search=SALZ
 
 ?? status == 200
-?? js response.parsedBody[0]?.name == Salz
+?? js response.parsedBody[0]?.nameDe == Salz
 
 ### Spaces around the term: finds Salz -> 200
 GET {{host}}/ingredients?search=%20salz%20
 
 ?? status == 200
-?? js response.parsedBody[0]?.name == Salz
+?? js response.parsedBody[0]?.nameDe == Salz
 
 ### Repeated spaces inside the term: finds Saure Sahne -> 200
 GET {{host}}/ingredients?search=saure%20%20%20sahne
 
 ?? status == 200
-?? js response.parsedBody[0]?.name == Saure Sahne
+?? js response.parsedBody[0]?.nameDe == Saure Sahne
 
 ### Decomposed umlaut (O + diaeresis): finds Öl -> 200
 # The case ILIKE alone does not solve — NFC normalisation does the work here.
 GET {{host}}/ingredients?search=O%CC%88l
 
 ?? status == 200
-?? js response.parsedBody[0]?.name == Öl
+?? js response.parsedBody[0]?.nameDe == Öl
 
 ### Upper case beyond ASCII: "ÖL" finds Öl -> 200
 GET {{host}}/ingredients?search=%C3%96L
 
 ?? status == 200
-?? js response.parsedBody[0]?.name == Öl
+?? js response.parsedBody[0]?.nameDe == Öl
 
 ### Search term of spaces only: no filter, same list as without search -> 200
 GET {{host}}/ingredients?search=%20%20
@@ -505,7 +577,7 @@ GET {{host}}/ingredients?search=xyz
 POST {{host}}/ingredients
 Content-Type: application/json
 
-{ "name": "Liebstöckel", "defaultUnit": "PIECE" }
+{ "name": "Liebstöckel", "defaultUnit": "PIECE", "language": "DE" }
 
 ?? status == 201
 
@@ -515,7 +587,7 @@ Content-Type: application/json
 POST {{host}}/ingredients
 Content-Type: application/json
 
-{ "name": "  SALZ  " }
+{ "name": "  SALZ  ", "language": "DE" }
 
 ?? status == 409
 
@@ -523,7 +595,7 @@ Content-Type: application/json
 POST {{host}}/ingredients
 Content-Type: application/json
 
-{ "name": "Saure   Sahne" }
+{ "name": "Saure   Sahne", "language": "DE" }
 
 ?? status == 409
 
@@ -533,7 +605,7 @@ Content-Type: application/json
 POST {{host}}/ingredients
 Content-Type: application/json
 
-{ "name": "Öl" }
+{ "name": "Öl", "language": "DE" }
 
 ?? status == 409
 
@@ -541,7 +613,7 @@ Content-Type: application/json
 POST {{host}}/ingredients
 Content-Type: application/json
 
-{ "name": "ÖL" }
+{ "name": "ÖL", "language": "DE" }
 
 ?? status == 409
 
@@ -549,15 +621,35 @@ Content-Type: application/json
 POST {{host}}/ingredients
 Content-Type: application/json
 
-{ "name": "Lorbeerblatt" }
+{ "name": "Lorbeerblatt", "language": "DE" }
 
 ?? status == 201
+
+### English ingredient -> 201, the name lands in nameEn, nameDe stays null
+# name_normalized holds the name in the language it was created in; the German
+# name arrives later through an alias (#19).
+POST {{host}}/ingredients
+Content-Type: application/json
+
+{ "name": "nutmeg", "language": "EN" }
+
+?? status == 201
+?? js response.parsedBody.nameEn == nutmeg
+?? js response.parsedBody.nameDe isFalse
+
+### Without language -> 400
+POST {{host}}/ingredients
+Content-Type: application/json
+
+{ "name": "Kurkuma" }
+
+?? status == 400
 
 ### Name of spaces only -> 400 (trimmed before it is validated)
 POST {{host}}/ingredients
 Content-Type: application/json
 
-{ "name": "   " }
+{ "name": "   ", "language": "DE" }
 
 ?? status == 400
 
@@ -565,7 +657,7 @@ Content-Type: application/json
 POST {{host}}/ingredients
 Content-Type: application/json
 
-{ "name": "Kurkuma", "id": "abc" }
+{ "name": "Kurkuma", "id": "abc", "language": "DE" }
 
 ?? status == 400
 
@@ -573,6 +665,6 @@ Content-Type: application/json
 POST {{host}}/ingredients
 Content-Type: application/json
 
-{ "name": "Petersilie", "defaultUnit": "EL" }
+{ "name": "Petersilie", "defaultUnit": "EL", "language": "DE" }
 
 ?? status == 400

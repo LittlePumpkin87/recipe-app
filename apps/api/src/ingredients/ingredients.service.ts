@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateIngredientDto, IngredientDto } from './dto/ingredient.dto';
 import { ingredientSelect, toIngredient } from './ingredient.mapper';
 import { normalizeIngredientName } from '../common/normalize-name';
-import { Prisma } from '../generated/prisma/client';
+import { Prisma, Language } from '../generated/prisma/client';
 
 /** Business logic and database queries for the central ingredient list. */
 @Injectable()
@@ -19,7 +19,7 @@ export class IngredientsService {
                     : undefined,
             },
             select: ingredientSelect,
-            orderBy: { name: 'asc' },
+            orderBy: { nameNormalized: 'asc' },
             take: 20,
         });
         return ingredients.map(toIngredient);
@@ -31,7 +31,8 @@ export class IngredientsService {
             const ingredient = await this.prisma.ingredient.create({
                 data: {
                     defaultUnit: dto.defaultUnit,
-                    name: dto.name,
+                    ...(dto.language === Language.DE ? { nameDe: dto.name } : {}),
+                    ...(dto.language === Language.EN ? { nameEn: dto.name } : {}),
                     nameNormalized: normalizeIngredientName(dto.name),
                 },
                 select: ingredientSelect,

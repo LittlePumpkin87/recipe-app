@@ -37,9 +37,18 @@ public partial class RecipeDbContext : DbContext
             entity.Property(e => e.Id)
                 .HasDefaultValueSql("uuidv7()")
                 .HasColumnName("id");
-            entity.Property(e => e.Name)
+            entity.Property(e => e.NameDe)
                 .HasMaxLength(120)
-                .HasColumnName("name");
+                .HasColumnName("name_de");
+            entity.Property(e => e.NameDePlural)
+                .HasMaxLength(120)
+                .HasColumnName("name_de_plural");
+            entity.Property(e => e.NameEn)
+                .HasMaxLength(120)
+                .HasColumnName("name_en");
+            entity.Property(e => e.NameEnPlural)
+                .HasMaxLength(120)
+                .HasColumnName("name_en_plural");
             entity.Property(e => e.NameNormalized)
                 .HasMaxLength(120)
                 .HasColumnName("name_normalized");

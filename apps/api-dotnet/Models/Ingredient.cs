@@ -7,9 +7,15 @@ public partial class Ingredient
 {
     public Guid Id { get; set; }
 
-    public string Name { get; set; } = null!;
+    public string? NameEn { get; set; }
 
     public string NameNormalized { get; set; } = null!;
+
+    public string? NameDe { get; set; }
+
+    public string? NameDePlural { get; set; }
+
+    public string? NameEnPlural { get; set; }
 
     public virtual ICollection<IngredientAlias> IngredientAliases { get; set; } = new List<IngredientAlias>();
 

@@ -8,7 +8,10 @@ namespace RecipeApi.Dtos;
 /// </summary>
 public record IngredientDto
 (Guid Id,
-    string Name,
+    string? NameDe,
+    string? NameEn,
+    string? NameDePlural,
+    string? NameEnPlural,
     Unit? DefaultUnit
 );
 
@@ -27,6 +30,10 @@ public class CreateIngredientDto
         get => _name;
         set => _name = value?.Trim();
     }
+
+    [Required]
+    public Language? Language
+    { get; set; }
 
     public Unit? DefaultUnit { get; set; }
 }

@@ -158,8 +158,41 @@ new language a matter of data instead of a migration, at the cost of a join on
 every recipe read, in Prisma and in EF Core. There will never be a third
 language, so that flexibility buys nothing. The API returns all names, the
 frontend picks one, the same way it renders a `Unit` value. *Not migrated yet:
-the schema still has only `name` and `name_normalized`, and the catalogue file
-has no English plural (`enPlural`) so far.*
+the schema still has only `name` and `name_normalized`.*
+
+**Singular and plural may each be empty** (decided 17 November 2026). Whether a
+form is filled depends on the language, not on how the ingredient is bought or
+measured. If one form is empty, the other is shown.
+
+| Entry | Singular | Plural |
+|---|---|---|
+| flour / Mehl | flour / Mehl | — |
+| black beans | black bean / schwarze Bohne | black beans / schwarze Bohnen |
+| canned diced tomatoes | — | canned diced tomatoes / Tomaten, gehackt (Dose) |
+| molasses | molasses / Melasse | — |
+
+A plural that equals the singular stays empty ("Hähnchenschenkel", "Cracker").
+Products that exist only in the plural have no singular, even where the word
+has one: nobody buys a canned diced tomato. When a name moved from plural to
+singular, the old spelling stayed as an alias, so the import still finds
+"black beans". The catalogue was filled on 17 November from a script proposal
+(plural seen in the allrecipes lines or not) and corrected by hand for 258
+entries; German has no source data and was done by hand throughout. Odd cases
+that slipped through are fixed per recipe, not by a further pass.
+
+**`name_normalized` stays the unique key, in the language the ingredient was
+created in** (decided 17 November 2026). There is one column, not one per
+language. A catalogue entry is keyed by its English name, or by its English
+plural when there is no singular. An ingredient the catalogue does not know is
+created from a recipe, and the recipe's `language` decides which display column
+gets the name and what the key is: "Möhren" in a German recipe becomes
+`name_de` = Möhren, `name_normalized` = möhren, with both English columns
+empty. The other language is reached through `ingredient_alias` only. The
+reason is the seed: Öl, Mehl, Möhren, Saure Sahne and Liebstöckel are not in the
+catalogue, so "always derive the key from the English name" has nothing to work
+with. Consequences: `name_en` and `name_de` are nullable, with a check that at
+least one name exists; `POST /ingredients` has no recipe and needs a `language`
+field of its own.
 
 **How the catalogue was built** (9–10 November 2026). The file is
 `apps/api/prisma/ingredient-catalog.json`, one entry per line, so a diff shows

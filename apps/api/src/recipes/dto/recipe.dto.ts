@@ -29,12 +29,16 @@ export interface RecipeListItemDto {
 export interface RecipeDetailDto extends RecipeListItemDto {
     description: string | null;
     instructions: string;
+    language: Language;
     ingredients: RecipeIngredientDto[];
 }
 
 export interface RecipeIngredientDto {
     ingredientId: string;
-    name: string;
+    nameEn: string | null;
+    nameEnPlural: string | null;
+    nameDe: string | null;
+    nameDePlural: string | null;
     amount: number | null;
     unit: Unit | null;
     note: string | null;
@@ -48,7 +52,6 @@ export type ImportRecipeInput = Omit<CreateRecipeDto, 'servings'> & {
     sourceName: string;
     sourceUrl: string;
     externalId: string;
-    language: Language;
 };
 
 /** One line of the ingredient list. */
@@ -123,6 +126,9 @@ export class CreateRecipeDto {
     @ValidateNested({ each: true })
     @Type(() => CreateRecipeIngredientDto)
     ingredients: CreateRecipeIngredientDto[];
+
+    @IsEnum(Language)
+    language: Language;
 }
 
 /** The body of `PATCH /recipes/:id`, every field optional. */

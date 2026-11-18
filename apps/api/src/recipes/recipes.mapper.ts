@@ -10,7 +10,14 @@ export const recipeIngredientInclude = {
     recipeIngredients: {
         orderBy: { position: 'asc' },
         include: {
-            ingredient: { select: { name: true } },
+            ingredient: {
+                select: {
+                    nameEn: true,
+                    nameDe: true,
+                    nameDePlural: true,
+                    nameEnPlural: true,
+                },
+            },
         },
     },
 } satisfies Prisma.RecipeInclude;
@@ -25,7 +32,11 @@ function toRecipeIngredient(
 ): RecipeIngredientDto {
     return {
         ingredientId: recipeIngredient.ingredientId,
-        name: recipeIngredient.ingredient.name,
+        nameEn: recipeIngredient.ingredient.nameEn,
+        nameEnPlural: recipeIngredient.ingredient.nameEnPlural,
+        nameDe: recipeIngredient.ingredient.nameDe,
+        nameDePlural: recipeIngredient.ingredient.nameDePlural,
+
         amount:
             recipeIngredient.amount === null
                 ? null
@@ -46,6 +57,7 @@ export function toRecipeDetail(recipe: Recipe): RecipeDetailDto {
         servings: recipe.servings,
         prepMinutes: recipe.prepMinutes,
         totalMinutes: recipe.totalMinutes,
+        language: recipe.language,
         ingredients: recipe.recipeIngredients.map(toRecipeIngredient),
     };
 }

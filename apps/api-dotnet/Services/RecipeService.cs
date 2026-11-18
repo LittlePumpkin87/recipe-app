@@ -45,11 +45,15 @@ public class RecipeService(RecipeDbContext recipeDb)
                 recipe.TotalMinutes,
                 recipe.Description,
                 recipe.Instructions,
+                recipe.Language,
                 recipe.RecipeIngredients
                         .OrderBy(recipeIngredient => recipeIngredient.Position)
                         .Select(recipeIngredient => new RecipeIngredientDto(
                             recipeIngredient.IngredientId,
-                            recipeIngredient.Ingredient.Name,
+                            recipeIngredient.Ingredient.NameDe,
+                            recipeIngredient.Ingredient.NameEn,
+                            recipeIngredient.Ingredient.NameEnPlural,
+                            recipeIngredient.Ingredient.NameDePlural,
                             recipeIngredient.Amount,
                             recipeIngredient.Unit,
                             recipeIngredient.Note,
@@ -63,7 +67,7 @@ public class RecipeService(RecipeDbContext recipeDb)
     /// Finds or creates an ingredient per line, keyed by its normalised name.
     /// </summary>
     private async Task<Dictionary<string, Ingredient>> ResolveIngredientsAsync(
-    IReadOnlyList<CreateRecipeIngredientDto> ingredientLines)
+    IReadOnlyList<CreateRecipeIngredientDto> ingredientLines, Language language)
     {
         var normalizedNames = ingredientLines
         .Select(ingredientLine => IngredientName.Normalize(ingredientLine.Name!))
@@ -82,7 +86,12 @@ public class RecipeService(RecipeDbContext recipeDb)
                 continue;
             }
 
-            var ingredient = new Ingredient { Name = ingredientLine.Name!, NameNormalized = normalizedName };
+            var ingredient = new Ingredient
+            {
+                NameDe = language == Language.De ? ingredientLine.Name! : null,
+                NameEn = language == Language.En ? ingredientLine.Name! : null,
+                NameNormalized = normalizedName
+            };
             _db.Ingredients.Add(ingredient);
             ingredientsByName.Add(normalizedName, ingredient);
 
@@ -95,7 +104,7 @@ public class RecipeService(RecipeDbContext recipeDb)
     {
         await using var transaction = await _db.Database.BeginTransactionAsync();
 
-        var ingredientsByName = await ResolveIngredientsAsync(dto.Ingredients);
+        var ingredientsByName = await ResolveIngredientsAsync(dto.Ingredients, dto.Language!.Value);
         await _db.SaveChangesAsync();
         var recipe = new Recipe
         {
@@ -104,6 +113,7 @@ public class RecipeService(RecipeDbContext recipeDb)
             Instructions = dto.Instructions!,
             PrepMinutes = dto.PrepMinutes,
             TotalMinutes = dto.TotalMinutes,
+            Language = dto.Language!.Value,
         };
         if (dto.Servings is int servings)
         {
@@ -186,10 +196,13 @@ public class RecipeService(RecipeDbContext recipeDb)
         {
             recipe.Servings = (int)dto.Servings;
         }
-
+        if (dto.Language is not null)
+        {
+            recipe.Language = dto.Language.Value;
+        }
         if (dto.Ingredients is not null)
         {
-            var ingredientsByName = await ResolveIngredientsAsync(dto.Ingredients);
+            var ingredientsByName = await ResolveIngredientsAsync(dto.Ingredients, recipe.Language);
             await _db.SaveChangesAsync();
 
             await _db.RecipeIngredients

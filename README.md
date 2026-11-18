@@ -220,8 +220,8 @@ npm run start:dotnet   # ASP.NET Core, port 5000
 npm run build          # build both backends (build:nest, build:dotnet)
 npm run serve:nest     # run the NestJS build from dist/, no watch
 npm run serve:dotnet   # run the .NET build without rebuilding
-npm run http:nest      # seed, then send requests.http to NestJS
-npm run http:dotnet    # seed, then send requests.http to ASP.NET Core
+npm run test:nest      # seed, then send requests.http to NestJS
+npm run test:dotnet    # seed, then send requests.http to ASP.NET Core
 npm run compare        # both runs, then tools/compare-responses.ts
 npm run import:allrecipes
 ```
@@ -385,7 +385,7 @@ erDiagram
 | Model | Purpose |
 |---|---|
 | `Recipe` | Title, description, instructions, servings, `prepMinutes` and `totalMinutes`, `language` (default `DE`), optional import provenance. |
-| `Ingredient` | Central ingredient list. One row per ingredient, shared across recipes. |
+| `Ingredient` | Central ingredient list. One row per ingredient in every language, shared across recipes: `nameEn`, `nameEnPlural`, `nameDe`, `nameDePlural` for display (each nullable, at least one set), `nameNormalized` for lookups. |
 | `IngredientAlias` | Alternative spellings pointing at an ingredient ("zwiebeln" → "Zwiebel"). |
 | `RecipeIngredient` | Join table between the two, carrying `amount`, `unit`, a per-line `note`, a `groupLabel` and the `position` within the recipe. |
 
@@ -654,9 +654,10 @@ no `mode` is needed. It is also the more correct of the two: `ILIKE` handles
 case, but not an `ö` that arrived as `o` plus a combining diaeresis — a real
 possibility with text pasted from elsewhere.
 
-The rule that follows: **compare against `nameNormalized`, display `name`.** It
-holds for the search, for `POST /ingredients` and for the lookup inside
-`POST /recipes`.
+The rule that follows: **compare against `nameNormalized`, display one of the
+four names.** It holds for the search, for `POST /ingredients` and for the lookup
+inside `POST /recipes`. The API returns all four names; the frontend picks the
+one for its language, falling back to the other number when one form is missing.
 
 Recipe titles have no normalized column and do not need one. `?search=roemer`
 finding *Römertopfbrot* is a nice-to-have; an ingredient list that grows a
@@ -677,6 +678,15 @@ one request — `"Salz"` for the soup and `" salz "` to taste — is looked up o
 the ids are kept in a `Map` keyed by the normalized name, so both lines point at
 the same ingredient. `position` is taken from the index in the incoming list,
 starting at 1.
+
+`language` is required in the body and decides where a **new** ingredient's
+name goes: `"DE"` writes `nameDe`, `"EN"` writes `nameEn`, the other column stays
+`NULL`, and `nameNormalized` holds the name in that language. An existing
+ingredient is linked unchanged. `POST /ingredients` takes the same `language`
+field for the same reason. `PATCH /recipes/:id` may omit it; new ingredients in
+a replaced list then take the recipe's stored language, and a `language` in the
+same request wins over the stored one. The detail response carries the recipe's
+`language`.
 
 Three things are called "ingredient" here, and the code gives each its own word,
 in both backends: an `ingredientLine` is what the request sent, an `ingredient`

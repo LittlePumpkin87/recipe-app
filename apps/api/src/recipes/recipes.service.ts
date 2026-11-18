@@ -15,7 +15,7 @@ import {
     ImportRecipeInput,
 } from './dto/recipe.dto';
 import { normalizeIngredientName } from '../common/normalize-name';
-import { Prisma } from '../generated/prisma/client';
+import { Language, Prisma } from '../generated/prisma/client';
 
 /** Business logic and database queries for recipes. */
 @Injectable()
@@ -52,6 +52,7 @@ export class RecipesService {
     private async resolveIngredientIds(
         transactionClient: Prisma.TransactionClient,
         ingredientLines: CreateRecipeIngredientDto[],
+        language: Language,
     ): Promise<Map<string, string>> {
         const ingredientIds = new Map<string, string>();
 
@@ -64,7 +65,13 @@ export class RecipesService {
                 where: { nameNormalized: normalizedName },
                 update: {},
                 create: {
-                    name: ingredientLine.name,
+                    ...(language === Language.DE
+                        ? { nameDe: ingredientLine.name }
+                        : {}),
+                    ...(language === Language.EN
+                        ? { nameEn: ingredientLine.name }
+                        : {}),
+
                     nameNormalized: normalizedName,
                 },
             });
@@ -85,6 +92,7 @@ export class RecipesService {
             servings: dto.servings,
             prepMinutes: dto.prepMinutes,
             totalMinutes: dto.totalMinutes,
+            language: dto.language,
             recipeIngredients: {
                 create: dto.ingredients.map((ingredientLine, index) => ({
                     ingredientId: ingredientIds.get(
@@ -107,6 +115,7 @@ export class RecipesService {
                 const ingredientIds = await this.resolveIngredientIds(
                     transactionClient,
                     dto.ingredients,
+                    dto.language,
                 );
                 return transactionClient.recipe.create({
                     data: this.buildRecipeCreateData(dto, ingredientIds),
@@ -125,6 +134,7 @@ export class RecipesService {
                 const ingredientIds = await this.resolveIngredientIds(
                     transactionClient,
                     input.ingredients,
+                    input.language,
                 );
                 return transactionClient.recipe.create({
                     data: {
@@ -132,7 +142,6 @@ export class RecipesService {
                         sourceName: input.sourceName,
                         externalId: input.externalId,
                         sourceUrl: input.sourceUrl,
-                        language: input.language,
                     },
                     select: { id: true },
                 });
@@ -146,21 +155,25 @@ export class RecipesService {
         try {
             const recipe = await this.prisma.$transaction(
                 async (transactionClient) => {
-                    await transactionClient.recipe.update({
-                        where: { id },
-                        data: {
-                            title: dto.title,
-                            description: dto.description,
-                            servings: dto.servings,
-                            totalMinutes: dto.totalMinutes,
-                            instructions: dto.instructions,
-                            prepMinutes: dto.prepMinutes,
+                    const updatedRecipe = await transactionClient.recipe.update(
+                        {
+                            where: { id },
+                            data: {
+                                title: dto.title,
+                                description: dto.description,
+                                servings: dto.servings,
+                                totalMinutes: dto.totalMinutes,
+                                instructions: dto.instructions,
+                                prepMinutes: dto.prepMinutes,
+                                language: dto.language,
+                            },
                         },
-                    });
+                    );
                     if (dto.ingredients !== undefined) {
                         const ingredientIds = await this.resolveIngredientIds(
                             transactionClient,
                             dto.ingredients,
+                            updatedRecipe.language,
                         );
                         await transactionClient.recipeIngredient.deleteMany({
                             where: { recipeId: id },

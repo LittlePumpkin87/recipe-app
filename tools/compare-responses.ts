@@ -6,8 +6,14 @@
 import { readFileSync } from "node:fs";
 
 type HttpResponse = { statusCode: number; body?: string };
-type RequestEntry = { name: string; response?: HttpResponse };
+type TestResult = { status: string; message: string };
+type RequestEntry = {
+    name: string;
+    response?: HttpResponse;
+    testResults?: TestResult[];
+};
 type RunFile = { requests: RequestEntry[] };
+
 
 const IGNORED_KEYS = new Set(["id", "ingredientId"]);
 
@@ -115,6 +121,25 @@ for (let i = 0; i < count; i++) {
         problems,
     );
 }
+
+// Failed assertions
+
+function collectFailedTests(
+    backend: string,
+    requests: RequestEntry[],
+    out: string[],
+): void {
+    for (const request of requests) {
+        for (const result of request.testResults ?? []) {
+            if (result.status !== "SUCCESS") {
+                out.push(`${backend} "${request.name}": ${result.message}`);
+            }
+        }
+    }
+}
+
+collectFailedTests("nest", nestRequests, problems);
+collectFailedTests("dotnet", dotnetRequests, problems);
 
 // Reporting
 

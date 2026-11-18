@@ -1,4 +1,4 @@
-import { Unit } from '../../generated/prisma/client';
+import { Language, Unit } from '../../generated/prisma/client';
 
 import { Transform } from 'class-transformer';
 import {
@@ -12,7 +12,10 @@ import {
 export interface IngredientDto {
     id: string;
     defaultUnit: Unit | null;
-    name: string;
+    nameEn: string | null;
+    nameEnPlural: string | null;
+    nameDe: string | null;
+    nameDePlural: string | null;
 }
 
 /** The body of `POST /ingredients`. */
@@ -28,4 +31,7 @@ export class CreateIngredientDto {
     @IsOptional()
     @IsEnum(Unit)
     defaultUnit?: Unit;
+
+    @IsEnum(Language)
+    language: Language;
 }

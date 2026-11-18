@@ -26,11 +26,14 @@ public class IngredientService(RecipeDbContext recipeDb)
                 EF.Functions.Like(ingredient.NameNormalized, $"%{normalizedSearch}%"));
         }
         return await query
-        .OrderBy(ingredient => ingredient.Name)
+        .OrderBy(ingredient => ingredient.NameNormalized)
         .Take(20)
         .Select(ingredient => new IngredientDto(
             ingredient.Id,
-            ingredient.Name,
+            ingredient.NameDe,
+            ingredient.NameEn,
+            ingredient.NameDePlural,
+            ingredient.NameEnPlural,
             ingredient.DefaultUnit
         )).ToListAsync();
     }
@@ -42,7 +45,8 @@ public class IngredientService(RecipeDbContext recipeDb)
 
         var ingredient = new Ingredient
         {
-            Name = dto.Name,
+            NameDe = dto.Language == Language.De ? dto.Name : null,
+            NameEn = dto.Language == Language.En ? dto.Name : null,
             NameNormalized = IngredientName.Normalize(dto.Name),
             DefaultUnit = dto.DefaultUnit,
 
@@ -60,6 +64,12 @@ public class IngredientService(RecipeDbContext recipeDb)
             throw new ConflictException($"An ingredient with the name \"{dto.Name}\" already exists", exception);
         }
 
-        return new IngredientDto(ingredient.Id, ingredient.Name, ingredient.DefaultUnit);
+        return new IngredientDto(
+            ingredient.Id,
+            ingredient.NameDe,
+            ingredient.NameEn,
+            ingredient.NameDePlural,
+            ingredient.NameEnPlural,
+            ingredient.DefaultUnit);
     }
 }

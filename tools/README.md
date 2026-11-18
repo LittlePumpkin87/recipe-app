@@ -165,7 +165,8 @@ node tools/compare-responses.ts /tmp/nest.json /tmp/dotnet.json
 
 Node 24 runs the file directly by stripping the types, so it only uses syntax
 that can be erased: no `enum`, no parameter properties. Exit code 0 means both
-runs agree, 1 lists every difference on stderr.
+runs agree and every assertion passed, 1 lists every difference and failed
+assertion on stderr.
 
 `tools/tsconfig.json` exists for the editor only. TypeScript 6 no longer loads
 `@types/node` unless `types` names it, so without the file `node:fs` shows as
@@ -192,3 +193,9 @@ an error. `erasableSyntaxOnly` flags the syntax Node cannot strip.
 - An entry without a response on both sides is skipped: httpyac lists every
   `###` block, including the chapter headings that hold no request.
 - A response on only one side (backend not reachable) counts as a difference.
+- Every failed `??` assertion is reported per backend, e.g.
+  `dotnet "language null -> 400 …": status == 400`. Without this, a test that
+  fails the same way on both sides would pass as "no differences".
+  `npm run compare` keeps going when httpyac exits with an error for that
+  reason (`|| true` around each run), so both runs always reach the comparison;
+  a failed seed still stops the chain.

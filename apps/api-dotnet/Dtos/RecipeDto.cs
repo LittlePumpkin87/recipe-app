@@ -20,13 +20,17 @@ public record RecipeDetailDto(
     int? TotalMinutes,
     string? Description,
     string Instructions,
+    Language Language,
     IReadOnlyList<RecipeIngredientDto> Ingredients
 
 );
 
 public record RecipeIngredientDto(
     Guid IngredientId,
-    string Name,
+    string? NameDe,
+    string? NameEn,
+    string? NameEnPlural,
+    string? NameDePlural,
     decimal? Amount,
     Unit? Unit,
     string? Note,
@@ -71,7 +75,6 @@ public class CreateRecipeDto : IValidatableObject
         get => _title;
         set => _title = value?.Trim();
     }
-
     [Required]
     public string? Instructions
     {
@@ -104,6 +107,9 @@ public class CreateRecipeDto : IValidatableObject
             _servingsGiven = true;
         }
     }
+
+    [Required]
+    public Language? Language { get; set; }
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
@@ -193,7 +199,7 @@ public class UpdateRecipeDto : IValidatableObject
 
     private int? _servings;
     private bool _servingsGiven;
-    
+
     [Range(1, int.MaxValue)]
     public int? Servings
     {
@@ -216,6 +222,18 @@ public class UpdateRecipeDto : IValidatableObject
         {
             _ingredients = value;
             _ingredientsGiven = true;
+        }
+    }
+
+    private Language? _language;
+    private bool _languageGiven;
+
+    public Language? Language
+    {
+        get => _language; set
+        {
+            _language = value;
+            _languageGiven = true;
         }
     }
 
@@ -249,5 +267,13 @@ public class UpdateRecipeDto : IValidatableObject
                 [nameof(Servings)]
 );
         }
+        
+        if (_languageGiven && _language is null)
+        {
+            yield return new ValidationResult(
+                "The field Language may be omitted, but it must not be null.",
+                [nameof(Language)]);
+        }
+
     }
 }
