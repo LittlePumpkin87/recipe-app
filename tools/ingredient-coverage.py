@@ -34,8 +34,10 @@ def load_aliases(path):
         entries = json.load(file)
     aliases = {}
     for entry in entries:
-        for alias in [entry["en"], *entry["aliases"]]:
-            aliases[normalize(alias)] = entry["en"]
+        key = entry["en"] or entry["enPlural"]
+        names = [entry["en"], entry["enPlural"], *entry["aliases"]["en"]]
+        for alias in filter(None, names):
+            aliases[normalize(alias)] = key
     return aliases
 
 
