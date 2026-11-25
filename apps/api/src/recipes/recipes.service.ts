@@ -141,26 +141,24 @@ export class RecipesService {
         return toRecipeDetail(recipe);
     }
 
-    /** Writes one imported recipe and returns its id. */
-    async importRecipe(input: ImportRecipeInput): Promise<string> {
-        const recipe = await this.prisma.$transaction(
-            async (transactionClient) => {
-                const ingredientIds = await this.resolveIngredientIds(
-                    transactionClient,
-                    input.ingredients,
-                    input.language,
-                );
-                return transactionClient.recipe.create({
-                    data: {
-                        ...this.buildRecipeCreateData(input, ingredientIds),
-                        sourceName: input.sourceName,
-                        externalId: input.externalId,
-                        sourceUrl: input.sourceUrl,
-                    },
-                    select: { id: true },
-                });
+    /**
+     * Writes one recipe from the bulk import and returns its id. Every line name must be a key
+     * of `aliasIds`; the adapter has checked that, so no ingredient is created here.
+     */
+    async importRecipe(
+        input: ImportRecipeInput,
+        aliasIds: Map<string, string>,
+    ): Promise<string> {
+        const recipe = await this.prisma.recipe.create({
+            data: {
+                ...this.buildRecipeCreateData(input, aliasIds),
+                sourceName: input.sourceName,
+                externalId: input.externalId,
+                sourceUrl: input.sourceUrl,
             },
-        );
+            select: { id: true },
+        });
+
         return recipe.id;
     }
 

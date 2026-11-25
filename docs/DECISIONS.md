@@ -125,13 +125,33 @@ ingredient appears under up to 216 spellings. Repairing that with rules and
 reviewed aliases would never end, and every V3 URL import would bring new
 spellings.
 
-The catalog is the fixed list of ingredients the app knows. An import will map
+The catalog is the fixed list of ingredients the app knows. The bulk import maps
 each line to a catalog entry through its aliases, and a recipe with a line that
-maps to nothing will be skipped. *As of 25 November 2026 the seed and the
-importer load the catalog before the first recipe; skipping recipes with an
-unknown line is not built yet.* Fewer recipes with a clean list beat all recipes
-with a dirty one. The same lookup serves the V3 URL import, where an unknown
-name surfaces in the preview instead of creating a new ingredient.
+maps to nothing is skipped (built 25 November 2026, #46: 24,745 of 50,513
+recipes imported, 21,060 skipped as unknown, `ingredient` still at the
+catalog's 1,201 rows). Fewer recipes with a clean list beat all recipes with a
+dirty one. The same lookup serves the V3 URL import, where an unknown name
+surfaces in the preview instead of creating a new ingredient. `POST /recipes`
+and `PATCH` still create unknown ingredients: there a person has typed the name.
+
+**The parser's names travel in the NDJSON** (decided 25 November 2026). The
+parser exists only in Python, the importer is TypeScript. The converter writes
+the names into each record as `Ingredient_Names`, one list per line of
+`Ingredients_Raw`, instead of a separate lookup file. The dataset may not be
+shipped, so everyone who wants the import builds it themselves; one script
+fewer and one file fewer is the point. The coverage tool reads the same field,
+so its estimate and the import see the same names.
+
+**A line with several names** (decided 25 November 2026). The parser splits
+1,822 lines into more than one name, in 8,560 recipes. Most contain "or"
+(`butter or margarine`), some "and" (`salt and pepper to taste`), about 200 are
+parser errors (`Reynolds® Oven Bag, turkey size`). A line with "or" keeps the
+first name as the ingredient and the alternatives in `note` (`or margarine,
+melted`): the shopping list counts one, the cook still sees the choice. Any
+other line becomes one row per name, amount and unit on the first only, the
+note on all of them, so `salt and pepper to taste` lists both. Parser errors
+need no rule of their own: `turkey size` has no alias, so the recipe is
+skipped.
 
 Two tools were tested for the mapping, on 1,000 random recipes:
 
@@ -1263,6 +1283,25 @@ developer machine is an attack target too. It is a major version jump for
 Until 05.11.2026 `glob` was overridden as well (GHSA-3g3m-2fjr-6pw4,
 traversal after an aborted `glob`). Only Jest pulled it, so the override went
 with Jest.
+
+### `effect`: overridden
+
+`prisma` 7.10.1 pulls `@prisma/config`, which pins `effect` to exactly 3.20.0.
+That version carries a ReDoS in `Schema.TemplateLiteral`
+([GHSA-7589-6fvf-x4pw](https://github.com/advisories/GHSA-7589-6fvf-x4pw),
+high), fixed in 3.22.1. Because the version is pinned, no ordinary update can
+reach the fix, so the root `package.json` forces it (since 25 November 2026):
+
+```json
+"overrides": { "effect": "3.22.1" }
+```
+
+`effect` runs only in the Prisma CLI while it reads this project's own
+configuration, so no outside input reaches the regular expression. It is
+overridden anyway so that `npm audit` stays clean in CI. The jump stays within
+major version 3. `npm audit fix` would instead downgrade `prisma` to 6.12.0, as
+with `deepmerge-ts` above. Remove the override once a Prisma release depends
+on `effect` 3.22.1 or later itself.
 
 ### Install scripts: `allowScripts`
 

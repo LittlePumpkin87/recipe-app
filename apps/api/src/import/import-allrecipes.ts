@@ -4,25 +4,30 @@ import { createInterface } from 'node:readline';
 import { AppModule } from '../app.module';
 import { RecipesService } from '../recipes/recipes.service';
 import { toImportRecipeInput, AllrecipesRecord } from './allrecipes.adapter';
-import { Prisma } from '../generated/prisma/client';
+import { Language, Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { loadIngredients } from './load-ingredient-catalog';
 import { join } from 'node:path';
+import { Presets, SingleBar } from 'cli-progress';
 
-const PROGRESS_STEP = 1000;
-
-type Outcome = 'imported' | 'skipped' | 'duplicates' | 'failed';
+type Outcome = 'imported' | 'skipped' | 'unknown' | 'duplicates' | 'failed';
 
 async function importLine(
     recipesService: RecipesService,
+    aliasIds: Map<string, string>,
     line: string,
 ): Promise<Outcome> {
-    const input = toImportRecipeInput(JSON.parse(line) as AllrecipesRecord);
-    if (input === null) {
-        return 'skipped';
+    const input = toImportRecipeInput(
+        JSON.parse(line) as AllrecipesRecord,
+        aliasIds,
+    );
+
+    if (typeof input === 'string') {
+        return input;
     }
+
     try {
-        await recipesService.importRecipe(input);
+        await recipesService.importRecipe(input, aliasIds);
         return 'imported';
     } catch (error) {
         if (
@@ -37,6 +42,20 @@ async function importLine(
         );
         return 'failed';
     }
+}
+
+async function countLines(filePath: string): Promise<number> {
+    let count = 0;
+    const lines = createInterface({
+        input: createReadStream(filePath),
+        crlfDelay: Infinity,
+    });
+    for await (const line of lines) {
+        if (line.trim() !== '') {
+            count++;
+        }
+    }
+    return count;
 }
 
 async function main(): Promise<void> {
@@ -55,6 +74,7 @@ async function main(): Promise<void> {
         skipped: 0,
         duplicates: 0,
         failed: 0,
+        unknown: 0,
     };
     let read = 0;
 
@@ -75,8 +95,23 @@ async function main(): Promise<void> {
             { timeout: 60_000 },
         );
         console.log(`Loaded ${catalogSize} catalog entries`);
-
+        const aliases = await prisma.ingredientAlias.findMany({
+            where: { language: Language.EN },
+            select: { alias: true, ingredientId: true },
+        });
+        const aliasIds = new Map(
+            aliases.map((entry) => [entry.alias, entry.ingredientId]),
+        );
+        console.log(`Loaded ${aliasIds.size} aliases`);
         const recipesService = app.get(RecipesService);
+        const bar = new SingleBar(
+            {
+                format: '{bar} {percentage}% | {value}/{total} | ETA {eta_formatted} | imported {imported}, unknown {unknown}',
+            },
+            Presets.shades_classic,
+        );
+        bar.start(await countLines(filePath), 0, counts);
+
         const lines = createInterface({
             input: createReadStream(filePath),
             crlfDelay: Infinity,
@@ -87,12 +122,10 @@ async function main(): Promise<void> {
                 continue;
             }
             read++;
-            counts[await importLine(recipesService, line)]++;
-
-            if (read % PROGRESS_STEP === 0) {
-                console.log(`${read} read`, counts);
-            }
+            counts[await importLine(recipesService, aliasIds, line)]++;
+            bar.increment(1, counts);
         }
+        bar.stop();
     } finally {
         await app.close();
     }

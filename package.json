@@ -31,7 +31,8 @@
     "import:allrecipes": "npm run import:allrecipes -w api"
   },
   "overrides": {
-    "minimatch": "^11.0.4"
+    "minimatch": "^11.0.4",
+    "effect":  "3.22.1"
   },
   "devDependencies": {
     "httpyac": "^6.16.7"

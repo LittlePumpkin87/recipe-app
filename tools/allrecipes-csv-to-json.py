@@ -4,10 +4,12 @@ NDJSON, one JSON object per line.
 
 Two things make the source awkward for a TypeScript importer: the file is
 Windows-1252 rather than UTF-8, and its nested columns hold Python literals in
-single quotes, which `JSON.parse` cannot read. This script fixes both and
-nothing else. Units, fractions, servings and instructions keep the shape the
-source gave them — interpreting those is the importer's job, in the language the
-application is written in.
+single quotes, which `JSON.parse` cannot read. This script fixes both.
+
+It also adds `Ingredient_Names`: the names ingredient-parser-nlp reads from each
+line of `Ingredients_Raw`, at the same index, because the parser exists only in
+Python. Everything else keeps the shape the source gave it; interpreting it is
+the importer's job. See tools/README.md.
 """
 
 import ast
@@ -15,6 +17,9 @@ import csv
 import json
 import sys
 from collections import Counter
+
+from ingredient_parser import parse_ingredient
+from tqdm import tqdm
 
 SOURCE = "data/dataset.csv"
 TARGET = "data/allrecipes.ndjson"
@@ -33,6 +38,7 @@ LITERAL_COLUMNS = [
 ]
 
 REPLACEMENT = "�"
+PROGRESS_STEP = 1000
 
 
 def parse_literal(value):
@@ -46,18 +52,42 @@ def parse_literal(value):
         return {"_unparsed": value}
 
 
+def parse_names(raw_lines, cache):
+    if not isinstance(raw_lines, list):
+        return None
+    names = []
+    for line in raw_lines:
+        if line not in cache:
+            cache[line] = read_names(line)
+        names.append(cache[line])
+    return names
+
+
+def read_names(line):
+    if not line.strip():
+        return []
+    parsed = parse_ingredient(line, string_units=True)
+    return [part.text for part in parsed.name]
+
+def count_records(source_path):
+    with open(source_path, newline="", encoding="cp1252", errors="replace") as source:
+        return sum(1 for _ in csv.DictReader(source, delimiter=";"))
+
 def convert(source_path, target_path):
     csv.field_size_limit(10_000_000)
 
     rows = 0
     damaged_rows = 0
     failures = Counter()
+    cache = {}
+    total = count_records(source_path)
 
     with (
         open(source_path, newline="", encoding="cp1252", errors="replace") as source,
         open(target_path, "w", encoding="utf-8") as target,
     ):
-        for row in csv.DictReader(source, delimiter=";"):
+        reader = csv.DictReader(source, delimiter=";")
+        for row in tqdm(reader, total=total, unit=" recipes"):
             record = dict(row)
 
             for column in LITERAL_COLUMNS:
@@ -65,6 +95,8 @@ def convert(source_path, target_path):
                 if isinstance(parsed, dict) and "_unparsed" in parsed:
                     failures[column] += 1
                 record[column] = parsed
+
+            record["Ingredient_Names"] = parse_names(record["Ingredients_Raw"], cache)
 
             line = json.dumps(record, ensure_ascii=False)
             if REPLACEMENT in line:
@@ -74,7 +106,6 @@ def convert(source_path, target_path):
             rows += 1
 
     report(rows, damaged_rows, failures)
-
 
 def report(rows, damaged_rows, failures):
     print(f"{rows} records written")

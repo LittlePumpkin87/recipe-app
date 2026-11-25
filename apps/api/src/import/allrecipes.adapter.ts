@@ -3,6 +3,7 @@ import {
     CreateRecipeIngredientDto,
     ImportRecipeInput,
 } from '../recipes/dto/recipe.dto';
+import { normalizeIngredientName } from '../common/normalize-name';
 
 interface Unparsed {
     _unparsed: string;
@@ -21,6 +22,7 @@ export interface AllrecipesRecord {
     'Cooking Time': string | null;
     Servings: number | string[] | Unparsed | null;
     Ingredients: AllrecipesIngredient[] | null;
+    Ingredient_Names: string[][] | null;
     Ingredients_Raw: string[] | Unparsed | null;
     Instructions: string[] | Unparsed | null;
     URL: string | null;
@@ -32,7 +34,8 @@ const INVALID_INGREDIENT_NAME = /^[-\d]/;
 
 export function toImportRecipeInput(
     record: AllrecipesRecord,
-): ImportRecipeInput | null {
+    aliasIds: Map<string, string>,
+): ImportRecipeInput | 'skipped' | 'unknown' {
     const title = record.Name.trim();
     const externalId = record.URL?.match(RECIPE_URL)?.[1];
     const rawLines = Array.isArray(record.Ingredients_Raw)
@@ -45,6 +48,7 @@ export function toImportRecipeInput(
         record.Instructions.length === 0 ||
         !Array.isArray(record.Ingredients) ||
         record.Ingredients.length === 0 ||
+        !Array.isArray(record.Ingredient_Names) ||
         record.Ingredients.some((ingredient, index) => {
             const name = ingredient.ingredient.trim();
             const rawLine = (rawLines[index] ?? '').trim();
@@ -56,7 +60,16 @@ export function toImportRecipeInput(
             );
         })
     ) {
-        return null;
+        return 'skipped';
+    }
+    const ingredients = toImportIngredientLines(
+        record.Ingredients,
+        rawLines,
+        record.Ingredient_Names,
+        aliasIds,
+    );
+    if (ingredients === null) {
+        return 'unknown';
     }
     const prepMinutes = toMinutes(record['Preparation Time']);
     const totalMinutes = prepMinutes + toMinutes(record['Cooking Time']);
@@ -66,7 +79,7 @@ export function toImportRecipeInput(
         prepMinutes: prepMinutes > 0 ? prepMinutes : undefined,
         totalMinutes: totalMinutes > 0 ? totalMinutes : undefined,
         servings: toServings(record.Servings),
-        ingredients: toImportIngredientLines(record.Ingredients, rawLines),
+        ingredients,
         sourceName: SOURCE_NAME,
         externalId,
         sourceUrl: record.URL!,
@@ -178,14 +191,87 @@ const RAW_INPUT = /^\S+ \(([^)]*)\) (\w+)/;
 const FLUID_OUNCE_NAME = /^ounces? /;
 const INGREDIENT_PREFIX = /^(and|or|to|into) /;
 
+const ALTERNATIVE = /\bor\b/i;
+const CAN = /\b(cans?|jars?)\b/i;
+const FLAKES =
+    /\b(crushed|teaspoons?|tablespoons?|tsp|tbsp|pinch(es)?|dash(es)?)\b/i;
+const TO_TASTE = /\bto taste\b/i;
+
 export function toImportIngredientLines(
     ingredients: AllrecipesIngredient[],
     rawLines: string[],
-): CreateRecipeIngredientDto[] {
-    return ingredients.map((ingredient, index) => {
-        return toIngredientLine(ingredient, rawLines[index] ?? '');
-    });
+    ingredientNames: string[][],
+    aliasIds: Map<string, string>,
+): CreateRecipeIngredientDto[] | null {
+    const lines: CreateRecipeIngredientDto[] = [];
+    for (const [index, ingredient] of ingredients.entries()) {
+        const rawLine = rawLines[index] ?? '';
+        const rows = toIngredientRows(
+            toIngredientLine(ingredient, rawLine),
+            ingredientNames[index] ?? [],
+            rawLine,
+            aliasIds,
+        );
+        if (rows === null) {
+            return null;
+        }
+        lines.push(...rows);
+    }
+    return lines;
 }
+
+function toIngredientRows(
+    line: CreateRecipeIngredientDto,
+    names: string[],
+    rawLine: string,
+    aliasIds: Map<string, string>,
+): CreateRecipeIngredientDto[] | null {
+    if (ALTERNATIVE.test(rawLine) && names.length > 1) {
+        const alias = toKnownAlias(names[0], rawLine, aliasIds);
+        if (alias === undefined) {
+            return null;
+        }
+        const alternatives = `or ${names.slice(1).join(' or ')}`;
+        return [
+            {
+                ...line,
+                name: alias,
+                note: toNote(
+                    [alternatives, line.note].filter(Boolean).join(', '),
+                ),
+            },
+        ];
+    }
+    const rows: CreateRecipeIngredientDto[] = [];
+    for (const [index, name] of names.entries()) {
+        const alias = toKnownAlias(name, rawLine, aliasIds);
+        if (alias === undefined) {
+            return null;
+        }
+        rows.push(
+            index === 0
+                ? { ...line, name: alias }
+                : { name: alias, note: line.note },
+        );
+    }
+    return rows.length > 0 ? rows : null;
+}
+
+function toKnownAlias(
+    name: string,
+    rawLine: string,
+    aliasIds: Map<string, string>,
+): string | undefined {
+    let alias = normalizeIngredientName(name);
+    if (alias === 'red pepper') {
+        alias = FLAKES.test(rawLine) ? 'red pepper flakes' : 'red bell pepper';
+    }
+    if (CAN.test(rawLine) && aliasIds.has(`canned ${alias}`)) {
+        return `canned ${alias}`;
+    }
+    return aliasIds.has(alias) ? alias : undefined;
+}
+
 //fetch if an ingredient is a whole sentence like "salt and pepper to taste" or similar
 function hasBrokenName(name: string): boolean {
     return INGREDIENT_PREFIX.test(name) || name.includes('to taste');
@@ -230,6 +316,7 @@ function toIngredientLine(
     if (hasBrokenName(name)) {
         return {
             name: rawLine.trim(),
+            note: TO_TASTE.test(rawLine) ? 'to taste' : undefined,
         };
     }
     if (unit) {

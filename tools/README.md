@@ -38,14 +38,20 @@ and [Multi-user (V4)](../docs/DECISIONS.md#multi-user-v4):
 
 ### Reproducing the NDJSON
 
-Download `dataset.csv` from the record above into `data/`, then run from the
-repository root:
+Download `dataset.csv` from the record above into `data/`. The script needs the
+virtual environment described under [Ingredient catalog tools](#ingredient-catalog-tools).
+Then run from the repository root:
 
 ```bash
-python3 tools/allrecipes-csv-to-json.py
+tools/.venv/bin/python tools/allrecipes-csv-to-json.py
 ```
 
-Both paths can be overridden: `python3 tools/allrecipes-csv-to-json.py <source> <target>`.
+Both paths can be overridden: `tools/.venv/bin/python tools/allrecipes-csv-to-json.py <source> <target>`.
+
+The script counts the records first, then shows a progress bar (`tqdm`). Most of
+the time goes into the ingredient parser: 479,092 ingredient lines, of which
+105,687 are distinct. Each distinct line is parsed once and the result reused,
+so the estimate on the bar starts high and drops.
 
 ### Why the conversion is needed
 
@@ -60,7 +66,22 @@ Two properties of the source would otherwise reach the importer:
   in single quotes. `JSON.parse` rejects them, and swapping quote characters
   breaks on the first apostrophe inside a string.
 
-The script changes the **format only, never the meaning**. Units stay as the
+One field is added: **`Ingredient_Names`**, the names
+[`ingredient-parser-nlp`](https://github.com/strangetom/ingredient-parser) reads
+from each line of `Ingredients_Raw`, one list per line at the same index:
+
+```json
+"Ingredients_Raw":  ["1 jalapeno pepper, seeded", "salt and pepper to taste"],
+"Ingredient_Names": [["jalapeno pepper"], ["salt", "pepper"]]
+```
+
+The source's own pre-split `Ingredients` field loses words (`1 jalapeno pepper`
+arrives as name `pepper`), and the parser exists only in Python, so the names
+are read here and the importer picks them up. They are stored as the parser
+returns them; normalising is left to `normalizeIngredientName` in the API.
+`Ingredient_Names` is `null` when `Ingredients_Raw` could not be read.
+
+Apart from that, the script changes the **format only, never the meaning**. Units stay as the
 source wrote them, quantities stay fractions, servings stay a list, instructions
 stay an array of steps. Mapping those onto `Unit`, `Decimal(8,2)`, `servings`
 and Markdown is the importer's work, in the language the application is written
@@ -102,7 +123,8 @@ Why the catalog exists and how it was built is in
 [DECISIONS.md](../docs/DECISIONS.md#data-model-decisions).
 
 Both read the lines with [`ingredient-parser-nlp`](https://github.com/strangetom/ingredient-parser)
-(MIT), which needs a virtual environment. Once, from the repository root:
+(MIT), as does `allrecipes-csv-to-json.py`, which needs a virtual environment.
+Once, from the repository root:
 
 ```bash
 python3 -m venv tools/.venv
