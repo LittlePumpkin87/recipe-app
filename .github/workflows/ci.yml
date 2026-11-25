@@ -54,9 +54,6 @@ jobs:
       - name: deploy db migration
         run: npm run db:deploy
 
-      - name: create database seed
-        run: npm run db:seed
-
       - name: start Nest API
         run: npm run serve:nest > nest.log 2>&1 &
       
