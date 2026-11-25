@@ -74,9 +74,13 @@ public class RecipeService(RecipeDbContext recipeDb)
         .Distinct()
         .ToList();
 
-        var ingredientsByName = await _db.Ingredients
-        .Where(ingredient => normalizedNames.Contains(ingredient.NameNormalized))
-        .ToDictionaryAsync(ingredient => ingredient.NameNormalized);
+        var ingredientsByName = await _db.IngredientAliases
+       .Where(ingredientAlias => ingredientAlias.Language == language
+           && normalizedNames.Contains(ingredientAlias.Alias))
+       .Include(ingredientAlias => ingredientAlias.Ingredient)
+       .ToDictionaryAsync(
+           ingredientAlias => ingredientAlias.Alias,
+           ingredientAlias => ingredientAlias.Ingredient);
 
         foreach (var ingredientLine in ingredientLines)
         {
@@ -90,8 +94,14 @@ public class RecipeService(RecipeDbContext recipeDb)
             {
                 NameDe = language == Language.De ? ingredientLine.Name! : null,
                 NameEn = language == Language.En ? ingredientLine.Name! : null,
-                NameNormalized = normalizedName
+                NameNormalized = normalizedName,
+                Language = language,
             };
+            ingredient.IngredientAliases.Add(new IngredientAlias
+            {
+                Alias = normalizedName,
+                Language = language,
+            });
             _db.Ingredients.Add(ingredient);
             ingredientsByName.Add(normalizedName, ingredient);
 

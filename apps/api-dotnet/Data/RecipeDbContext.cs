@@ -32,8 +32,6 @@ public partial class RecipeDbContext : DbContext
 
             entity.ToTable("ingredient");
 
-            entity.HasIndex(e => e.NameNormalized, "ingredient_name_normalized_key").IsUnique();
-
             entity.Property(e => e.Id)
                 .HasDefaultValueSql("uuidv7()")
                 .HasColumnName("id");
@@ -59,8 +57,6 @@ public partial class RecipeDbContext : DbContext
             entity.HasKey(e => e.Id).HasName("ingredient_alias_pkey");
 
             entity.ToTable("ingredient_alias");
-
-            entity.HasIndex(e => e.Alias, "ingredient_alias_alias_key").IsUnique();
 
             entity.Property(e => e.Id)
                 .HasDefaultValueSql("uuidv7()")

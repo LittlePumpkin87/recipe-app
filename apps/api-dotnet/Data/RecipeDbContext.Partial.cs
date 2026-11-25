@@ -15,8 +15,16 @@ public partial class RecipeDbContext
             .Property(ingredient => ingredient.DefaultUnit)
             .HasColumnName("default_unit");
 
-            modelBuilder.Entity<Recipe>()
-                .Property(language => language.Language)
-                .HasColumnName("language");
+        modelBuilder.Entity<Ingredient>()
+            .Property(ingredient => ingredient.Language)
+            .HasColumnName("language");
+
+        modelBuilder.Entity<IngredientAlias>()
+            .Property(ingredientAlias => ingredientAlias.Language)
+            .HasColumnName("language");
+
+        modelBuilder.Entity<Recipe>()
+            .Property(language => language.Language)
+            .HasColumnName("language");
     }
 }

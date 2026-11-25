@@ -2,9 +2,9 @@
 """Counts every ingredient name in the allrecipes NDJSON, read from the raw
 lines by `ingredient-parser-nlp`, and writes them by frequency as TSV.
 
-This was the starting point of the ingredient catalogue: the most frequent
-names were grouped into catalogue entries. Run it again after a dataset update
-to find frequent names the catalogue does not know yet.
+This was the starting point of the ingredient catalog: the most frequent
+names were grouped into catalog entries. Run it again after a dataset update
+to find frequent names the catalog does not know yet.
 """
 
 import json

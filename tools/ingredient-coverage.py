@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Measures how many allrecipes recipes the ingredient catalogue maps
+"""Measures how many allrecipes recipes the ingredient catalog maps
 completely, and lists the most frequent names it does not know.
 
-A recipe counts as covered when every line resolves to a catalogue entry. The
+A recipe counts as covered when every line resolves to a catalog entry. The
 two raw-line rules from docs/DECISIONS.md are applied (cans, "red pepper"); the
 importer is the authoritative implementation, this is an estimate.
 """
@@ -17,7 +17,7 @@ from collections import Counter
 from ingredient_parser import parse_ingredient
 
 SOURCE = "data/allrecipes.ndjson"
-CATALOGUE = "apps/api/prisma/ingredient-catalog.json"
+CATALOG = "apps/api/prisma/ingredient-catalog.json"
 CACHE = "data/parsed-lines.json"
 TOP_UNKNOWN = 30
 
@@ -65,7 +65,7 @@ def resolve(raw_line, name, aliases):
 
 def main():
     source = sys.argv[1] if len(sys.argv) > 1 else SOURCE
-    catalogue = sys.argv[2] if len(sys.argv) > 2 else CATALOGUE
+    catalog = sys.argv[2] if len(sys.argv) > 2 else CATALOG
     cache = sys.argv[3] if len(sys.argv) > 3 else CACHE
 
     recipes = []
@@ -76,7 +76,7 @@ def main():
                 recipes.append([line for line in raw if line.strip()])
 
     names = parse_lines(recipes, cache)
-    aliases = load_aliases(catalogue)
+    aliases = load_aliases(catalog)
 
     covered = 0
     used = set()
@@ -95,7 +95,7 @@ def main():
             used.update(found)
 
     print(f"recipes: {len(recipes)}, fully mapped: {covered} ({covered / len(recipes):.1%})")
-    print(f"catalogue entries used by mapped recipes: {len(used)}")
+    print(f"catalog entries used by mapped recipes: {len(used)}")
     print(f"most frequent unknown names (recipes containing them):")
     for name, count in unknown.most_common(TOP_UNKNOWN):
         print(f"  {count:6}  {name}")

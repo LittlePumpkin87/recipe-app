@@ -23,8 +23,13 @@
 # A request carrying # @ref newRecipe sends the named request first if it has
 # no response yet in this session.
 #
-# The starting point is the seed (npm run db:seed): the recipes
-# Langos and Römertopfbrot, 17 ingredients.
+# The starting point is the seed (npm run db:seed): the ingredient catalog
+# (apps/api/prisma/ingredient-catalog.json), then the recipes Langos and
+# Römertopfbrot. 8 of their 17 ingredients come from the catalog, 9 are new.
+#
+# An ingredient name is looked up as an alias in the recipe's language. A name
+# the catalog knows (Ei, Salz, cardamom) reuses that entry; test cases that need
+# a new ingredient use names the catalog does not know.
 
 ### ───────────── GET /recipes ─────────────
 
@@ -164,6 +169,94 @@ Content-Type: application/json
 }
 
 ?? status == 201
+
+### German plural finds the catalog entry -> 201, "Eier" is the row "egg"
+# (eier, DE) is an alias of the catalog entry egg/eggs/Ei/Eier.
+POST {{host}}/recipes
+Content-Type: application/json
+
+{
+  "title": "Rührei",
+  "language": "DE",
+  "instructions": "Eier verquirlen und in der Pfanne stocken lassen.",
+  "ingredients": [
+    { "name": "Eier", "amount": 3, "unit": "PIECE" }
+  ]
+}
+
+?? status == 201
+?? js response.parsedBody.ingredients[0]?.nameEn == egg
+?? js response.parsedBody.ingredients[0]?.nameDe == Ei
+
+### English plural finds the same entry -> 201, "eggs" is the row "egg"
+POST {{host}}/recipes
+Content-Type: application/json
+
+{
+  "title": "Scrambled eggs",
+  "language": "EN",
+  "instructions": "Whisk the eggs and let them set in the pan.",
+  "ingredients": [
+    { "name": "eggs", "amount": 3, "unit": "PIECE" }
+  ]
+}
+
+?? status == 201
+?? js response.parsedBody.ingredients[0]?.nameEn == egg
+?? js response.parsedBody.ingredients[0]?.nameDe == Ei
+
+### English "paprika" is the spice -> 201
+# The catalog maps (paprika, EN) to the powder, Paprikapulver in German.
+POST {{host}}/recipes
+Content-Type: application/json
+
+{
+  "title": "Paprika chicken",
+  "language": "EN",
+  "instructions": "Rub the chicken with paprika and roast it.",
+  "ingredients": [
+    { "name": "paprika", "amount": 2, "unit": "TEASPOON" }
+  ]
+}
+
+?? status == 201
+?? js response.parsedBody.ingredients[0]?.nameDe == Paprikapulver
+
+### German "Paprika" is not the spice -> 201, a new ingredient without nameEn
+# The lookup runs in the recipe's language: there is no alias (paprika, DE),
+# so the English spice is not reused.
+POST {{host}}/recipes
+Content-Type: application/json
+
+{
+  "title": "Paprikagemüse",
+  "language": "DE",
+  "instructions": "Paprika in Streifen schneiden und anbraten.",
+  "ingredients": [
+    { "name": "Paprika", "amount": 2, "unit": "PIECE" }
+  ]
+}
+
+?? status == 201
+?? js response.parsedBody.ingredients[0]?.nameDe == Paprika
+?? js response.parsedBody.ingredients[0]?.nameEn isFalse
+
+### Unknown name -> 201, the new ingredient gets its name as an alias
+# The POST /ingredients case "Teeblätter -> 409" below shows the alias exists.
+POST {{host}}/recipes
+Content-Type: application/json
+
+{
+  "title": "Tee",
+  "language": "DE",
+  "instructions": "Teeblätter mit heißem Wasser übergießen, drei Minuten ziehen lassen.",
+  "ingredients": [
+    { "name": "Teeblätter", "amount": 2, "unit": "TEASPOON" }
+  ]
+}
+
+?? status == 201
+?? js response.parsedBody.ingredients[0]?.nameDe == Teeblätter
 
 ### Title of spaces only -> 400 (trimmed before it is validated)
 POST {{host}}/recipes
@@ -393,9 +486,10 @@ Content-Type: application/json
 ?? js response.parsedBody.ingredients[3]?.nameDe == Pfeffer
 ?? js response.parsedBody.ingredients[3]?.nameEn isFalse
 
-### Switch the language and add a new ingredient -> 200, Cardamom lands in nameEn
+### Switch the language and add a new ingredient -> 200, Sumac lands in nameEn
 # The new ingredient takes the language of this request, not the stored one.
 # Without language in the body it would take the stored DE (see the case above).
+# Sumac, because the catalog does not know it; Cardamom would reuse its entry.
 # @ref newRecipe
 PATCH {{host}}/recipes/{{newRecipe.id}}
 Content-Type: application/json
@@ -404,12 +498,12 @@ Content-Type: application/json
   "language": "EN",
   "ingredients": [
     { "name": "Kartoffeln", "amount": 800, "unit": "GRAM" },
-    { "name": "Cardamom", "amount": 1, "unit": "PINCH" }
+    { "name": "Sumac", "amount": 1, "unit": "PINCH" }
   ]
 }
 
 ?? status == 200
-?? js response.parsedBody.ingredients[1]?.nameEn == Cardamom
+?? js response.parsedBody.ingredients[1]?.nameEn == Sumac
 ?? js response.parsedBody.ingredients[1]?.nameDe isFalse
 
 ### language outside the enum -> 400
@@ -527,18 +621,20 @@ GET {{host}}/ingredients
 
 ?? status == 200
 
-### Case does not matter: finds Salz -> 200
+### Case does not matter: finds Majo -> 200
 # The search term passes through the same normalisation as the column.
-GET {{host}}/ingredients?search=SALZ
+# The search reads name_normalized only, so catalog entries are found by their
+# English key ("salt", not "Salz"). Searching all aliases comes with #44.
+GET {{host}}/ingredients?search=MAJO
 
 ?? status == 200
-?? js response.parsedBody[0]?.nameDe == Salz
+?? js response.parsedBody[0]?.nameDe == Majo
 
-### Spaces around the term: finds Salz -> 200
-GET {{host}}/ingredients?search=%20salz%20
+### Spaces around the term: finds Majo -> 200
+GET {{host}}/ingredients?search=%20majo%20
 
 ?? status == 200
-?? js response.parsedBody[0]?.nameDe == Salz
+?? js response.parsedBody[0]?.nameDe == Majo
 
 ### Repeated spaces inside the term: finds Saure Sahne -> 200
 GET {{host}}/ingredients?search=saure%20%20%20sahne
@@ -582,8 +678,8 @@ Content-Type: application/json
 ?? status == 201
 
 ### An existing ingredient spelled differently -> 409
-# The unique index sits on name_normalized, not on name. "Salz" from the seed
-# and "  SALZ  " are the same row.
+# Every name is stored normalised as an alias, unique per language. "  SALZ  "
+# normalises to (salz, DE), an alias of the catalog entry salt.
 POST {{host}}/ingredients
 Content-Type: application/json
 
@@ -621,21 +717,49 @@ Content-Type: application/json
 POST {{host}}/ingredients
 Content-Type: application/json
 
-{ "name": "Lorbeerblatt", "language": "DE" }
+{ "name": "Bärlauch", "language": "DE" }
 
 ?? status == 201
 
 ### English ingredient -> 201, the name lands in nameEn, nameDe stays null
-# name_normalized holds the name in the language it was created in; the German
-# name arrives later through an alias (#19).
+# name_normalized holds the name in the language it was created in; a German
+# name can only arrive later through an alias.
 POST {{host}}/ingredients
 Content-Type: application/json
 
-{ "name": "nutmeg", "language": "EN" }
+{ "name": "lovage", "language": "EN" }
 
 ?? status == 201
-?? js response.parsedBody.nameEn == nutmeg
+?? js response.parsedBody.nameEn == lovage
 ?? js response.parsedBody.nameDe isFalse
+
+### A catalog name in its own language -> 409
+# (eier, DE) is an alias of the catalog entry egg.
+POST {{host}}/ingredients
+Content-Type: application/json
+
+{ "name": "Eier", "language": "DE" }
+
+?? status == 409
+
+### The same name in the other language -> 201, a different ingredient
+# There is no alias (eier, EN), so "Eier" is free in English.
+POST {{host}}/ingredients
+Content-Type: application/json
+
+{ "name": "Eier", "language": "EN" }
+
+?? status == 201
+?? js response.parsedBody.nameEn == Eier
+
+### A name a recipe created -> 409
+# POST /recipes "Tee" above created Teeblätter together with its alias.
+POST {{host}}/ingredients
+Content-Type: application/json
+
+{ "name": "Teeblätter", "language": "DE" }
+
+?? status == 409
 
 ### Without language -> 400
 POST {{host}}/ingredients

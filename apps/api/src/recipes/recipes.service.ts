@@ -48,7 +48,10 @@ export class RecipesService {
         return toRecipeDetail(recipe);
     }
 
-    /** Finds or creates each ingredient by normalized name; returns the ids keyed by that name. */
+    /**
+     * Looks up each name as an alias in the recipe's language; an unknown name becomes a new
+     * ingredient together with its first alias. Returns the ids keyed by the normalized name.
+     */
     private async resolveIngredientIds(
         transactionClient: Prisma.TransactionClient,
         ingredientLines: CreateRecipeIngredientDto[],
@@ -61,10 +64,17 @@ export class RecipesService {
             if (ingredientIds.has(normalizedName)) {
                 continue;
             }
-            const ingredient = await transactionClient.ingredient.upsert({
-                where: { nameNormalized: normalizedName },
-                update: {},
-                create: {
+            const alias = await transactionClient.ingredientAlias.findUnique({
+                where: { alias_language: { alias: normalizedName, language } },
+            });
+
+            if (alias !== null) {
+                ingredientIds.set(normalizedName, alias.ingredientId);
+                continue;
+            }
+
+            const ingredient = await transactionClient.ingredient.create({
+                data: {
                     ...(language === Language.DE
                         ? { nameDe: ingredientLine.name }
                         : {}),
@@ -73,6 +83,10 @@ export class RecipesService {
                         : {}),
 
                     nameNormalized: normalizedName,
+                    language,
+                    ingredientAlias: {
+                        create: { alias: normalizedName, language },
+                    },
                 },
             });
             ingredientIds.set(normalizedName, ingredient.id);

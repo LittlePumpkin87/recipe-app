@@ -10,6 +10,12 @@ public partial class Recipe
 public partial class Ingredient
 {
     public Unit? DefaultUnit { get; set; }
+    public Language Language { get; set; }
+}
+
+public partial class IngredientAlias
+{
+    public Language Language { get; set; }
 }
 
 public partial class RecipeIngredient

@@ -62,7 +62,7 @@ Under development. See [Roadmap](#roadmap) for what is and is not implemented.
 - Node.js 24 (see `.nvmrc`)
 - .NET SDK 10 (see `global.json`) — only for the second backend
 - Docker with Compose v2
-- Python 3 with a venv — only for the ingredient catalogue tools, see
+- Python 3 with a venv — only for the ingredient catalog tools, see
   `tools/README.md`
 - Optionally a PostgreSQL client (`postgresql-client`, DBeaver, pgAdmin) to
   connect to the database from the host
@@ -190,7 +190,7 @@ This is an npm workspaces monorepo. Application packages live under `apps/`.
 │       ├── Utility/        # DATABASE_URL → Npgsql, name normalizing, decimal validation
 │       └── Properties/     # launchSettings.json — local ports only
 ├── .config/                # dotnet-tools.json — pins dotnet-ef
-├── tools/                  # data preparation, catalogue tools, CI compare script — see tools/README.md
+├── tools/                  # data preparation, catalog tools, CI compare script — see tools/README.md
 ├── data/                   # downloaded data sets — gitignored, never committed
 ├── requests.http           # example requests — tests either backend
 ├── http-client.env.json    # httpYac environments: nest (3000), dotnet (5000)
@@ -385,8 +385,8 @@ erDiagram
 | Model | Purpose |
 |---|---|
 | `Recipe` | Title, description, instructions, servings, `prepMinutes` and `totalMinutes`, `language` (default `DE`), optional import provenance. |
-| `Ingredient` | Central ingredient list. One row per ingredient in every language, shared across recipes: `nameEn`, `nameEnPlural`, `nameDe`, `nameDePlural` for display (each nullable, at least one set), `nameNormalized` for lookups. |
-| `IngredientAlias` | Alternative spellings pointing at an ingredient ("zwiebeln" → "Zwiebel"). |
+| `Ingredient` | Central ingredient list. One row per ingredient in every language, shared across recipes: `nameEn`, `nameEnPlural`, `nameDe`, `nameDePlural` for display (each nullable, at least one set), `nameNormalized` plus `language` as the row's unique key. |
+| `IngredientAlias` | Every spelling of an ingredient, per language, normalized: (eier, DE) and (eggs, EN) both point at the row "egg". Unique on (`alias`, `language`). A recipe line is resolved through this table only. |
 | `RecipeIngredient` | Join table between the two, carrying `amount`, `unit`, a per-line `note`, a `groupLabel` and the `position` within the recipe. |
 
 ### Naming convention
@@ -497,9 +497,16 @@ their only job is to prove that a shared ingredient resolves to a single
 `ingredient` row. Real recipes arrive through `POST /recipes`, the bulk import
 below and, from V3, the URL importer — see [Shipped starter recipes](docs/DECISIONS.md#shipped-starter-recipes).
 
-The seed is also the rehearsal for `POST /recipes`: normalise the name, `upsert`
-on `nameNormalized`, keep the returned ids in a `Map`, then write the recipes
-and their join rows — all inside one `$transaction`. Every call within that
+Before the recipes, the seed loads the ingredient catalog
+(`apps/api/prisma/ingredient-catalog.json`, 1,201 entries) through the same
+`loadIngredients` the importer uses. 8 of the 17 seed ingredients are catalog
+entries, the other 9 are created. The transaction gets `timeout: 60_000`, since
+the catalog alone is about 5,100 queries and Prisma's default is 5 seconds.
+
+The seed is also the rehearsal for `POST /recipes`: normalise the name, look it
+up as an alias in the recipe's language or create the ingredient together with
+its alias, keep the ids in a `Map`, then write the recipes and their join rows —
+all inside one `$transaction`. Every call within that
 block goes through `transactionClient`, never through `prisma`, or it runs
 outside the transaction and is not rolled back with it. The name is longer than
 the usual `tx` on purpose: it is Prisma's own type name
@@ -590,10 +597,12 @@ character in a text column. The recipe is left out.
 **Do not seed afterwards.** `npx prisma db seed` empties every table, imported
 recipes included.
 
-**The ingredient catalogue is not applied yet.** "egg" and "eggs" become two
-ingredients. The curated catalogue in `apps/api/prisma/ingredient-catalog.json`
-(1,201 entries) exists, but no code reads it yet. Mapping each import line to a
-catalogue entry comes before the final import (#19); until then an import is a
+**The importer loads the ingredient catalog first.** Before the first line it
+writes `apps/api/prisma/ingredient-catalog.json` (1,201 entries, 3,899 aliases)
+into `ingredient` and `ingredient_alias`, in a transaction of its own. Every line
+is then resolved as an alias in the recipe's language, so "egg" and "eggs" are
+one ingredient. A name the catalog does not know still becomes a new
+ingredient; skipping such recipes is not built yet, so until then an import is a
 trial run. See [Data model decisions](docs/DECISIONS.md#data-model-decisions).
 
 ### Prisma Studio
@@ -654,9 +663,12 @@ no `mode` is needed. It is also the more correct of the two: `ILIKE` handles
 case, but not an `ö` that arrived as `o` plus a combining diaeresis — a real
 possibility with text pasted from elsewhere.
 
-The rule that follows: **compare against `nameNormalized`, display one of the
-four names.** It holds for the search, for `POST /ingredients` and for the lookup
-inside `POST /recipes`. The API returns all four names; the frontend picks the
+The rule that follows: **compare normalized values, display one of the four
+names.** The search compares against `nameNormalized`; `POST /ingredients` and
+the lookup inside `POST /recipes` compare against `ingredient_alias.alias`, which
+is stored normalized as well. The search does not read aliases yet, so a
+catalog entry is found by its English key ("salt", not "Salz"); searching all
+aliases comes with #44. The API returns all four names; the frontend picks the
 one for its language, falling back to the other number when one form is missing.
 
 Recipe titles have no normalized column and do not need one. `?search=roemer`
@@ -672,8 +684,11 @@ weaker operator is the right one on a normalized column.
 
 `POST /recipes` receives the recipe and its ingredient list in a single request.
 Ingredients are referenced by name, never by id. For each line the service
-normalizes the name and `upsert`s on `ingredient.nameNormalized`: an existing
-ingredient is linked, a new one is created first. A name that appears twice in
+normalizes the name and looks it up in `ingredient_alias` with the recipe's
+`language`: a hit links that ingredient, otherwise a new one is created together
+with its name as the first alias, in one nested write. English "paprika" is
+therefore the spice from the catalog, while German "Paprika" finds no alias
+(paprika, DE) and becomes an ingredient of its own. A name that appears twice in
 one request — `"Salz"` for the soup and `" salz "` to taste — is looked up once;
 the ids are kept in a `Map` keyed by the normalized name, so both lines point at
 the same ingredient. `position` is taken from the index in the incoming list,
@@ -721,12 +736,15 @@ server log.
 On success the response is `201` with the same shape as `GET /recipes/:id`. The
 mapper runs after the commit, outside the transaction.
 
-**Aliases are not consulted yet.** `resolveIngredientIds`, shared by
-`POST /recipes` and `PATCH /recipes/:id`, looks at `nameNormalized` only, so a
-name that exists solely as an `ingredientAlias.alias` becomes a new ingredient.
-The catalogue lookup is being added before the final bulk import (#19), in both
-backends; the catalogue lives in `apps/api/prisma/ingredient-catalog.json`.
-There is deliberately no endpoint for managing aliases.
+**Aliases decide, in both backends.** `resolveIngredientIds` (Nest) and
+`ResolveIngredientsAsync` (.NET), shared by `POST /recipes` and
+`PATCH /recipes/:id`, look up `ingredient_alias` only; `nameNormalized` is the
+row's key, not a search column. Nest asks once per name with `findUnique`, .NET
+asks once for all names of the request and loads each alias's ingredient with
+`Include`. Two requests that create the same new name at the same moment both
+find no alias; the second then fails on the unique index with a 500. For one
+household that is accepted. There is deliberately no endpoint for managing
+aliases.
 
 ### `DELETE /recipes/:id`: one statement, no transaction
 
@@ -790,10 +808,12 @@ the transaction's own, not yet committed writes.
 ### Duplicates: let the constraint decide
 
 `POST /ingredients` does not look for an existing row before it writes. It
-inserts, and the unique index on `ingredient.name_normalized` decides. If the
-name is taken, Postgres refuses the insert, Prisma raises error code `P2002`,
+inserts the ingredient and its first alias in one write, and the unique indexes
+decide: (`alias`, `language`) on `ingredient_alias` and (`name_normalized`,
+`language`) on `ingredient`. If the name is taken in that language, Postgres
+refuses the insert, nothing of the write remains, Prisma raises error code `P2002`,
 and the service turns that into `409 Conflict`. The .NET backend follows the same
-rule against the same index; only the name of the refusal differs, where Npgsql
+rule against the same indexes; only the name of the refusal differs, where Npgsql
 reports SQLSTATE `23505` inside an EF Core `DbUpdateException` — see
 [The writing endpoints](docs/DECISIONS.md#the-writing-endpoints).
 
@@ -809,10 +829,10 @@ Two consequences worth knowing:
   same value, so whichever arrives second is refused, and the ingredient keeps
   the display form of the first. There is no `PATCH /ingredients` in V1;
   rename it in Prisma Studio.
-- **Aliases are not checked here.** A name that exists only as an
-  `ingredientAlias.alias` is accepted as a new ingredient. The catalogue lookup
-  (#19) goes into the ingredient resolution shared by `POST /recipes` and
-  `PATCH /recipes/:id`, not into this endpoint.
+- **A name is taken per language.** "Eier" in German is an alias of the
+  catalog entry egg, so `{ "name": "Eier", "language": "DE" }` answers 409. In
+  English there is no alias "eier", so the same name with `"EN"` creates a new
+  ingredient.
 
 ## 🐘 Working with the database
 
@@ -970,6 +990,6 @@ link will be part of the frontend from the moment one exists.
 | File | Contents |
 |---|---|
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Every design decision, including the alternatives that were rejected and why — data model, the second backend, nutrition, images, multi-user, and the accepted audit findings |
-| [tools/README.md](tools/README.md) | Where imported recipe data comes from, its licence, how to reproduce the converted file, the ingredient catalogue tools and the CI compare script |
+| [tools/README.md](tools/README.md) | Where imported recipe data comes from, its licence, how to reproduce the converted file, the ingredient catalog tools and the CI compare script |
 | [requests.http](requests.http) | Example requests, runnable against either backend |
 | [http-client.env.json](http-client.env.json) | The two httpYac environments `requests.http` runs in |

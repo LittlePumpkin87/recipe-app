@@ -42,15 +42,23 @@ public class IngredientService(RecipeDbContext recipeDb)
     public async Task<IngredientDto> CreateAsync(CreateIngredientDto dto)
     {
         ArgumentNullException.ThrowIfNull(dto.Name);
+        var normalizedName = IngredientName.Normalize(dto.Name);
+        var language = dto.Language!.Value;
 
         var ingredient = new Ingredient
         {
             NameDe = dto.Language == Language.De ? dto.Name : null,
             NameEn = dto.Language == Language.En ? dto.Name : null,
             NameNormalized = IngredientName.Normalize(dto.Name),
+            Language = language,
             DefaultUnit = dto.DefaultUnit,
 
         };
+        ingredient.IngredientAliases.Add(new IngredientAlias
+        {
+            Alias = normalizedName,
+            Language = language,
+        });
 
         _db.Ingredients.Add(ingredient);
 

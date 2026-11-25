@@ -25,15 +25,28 @@ export class IngredientsService {
         return ingredients.map(toIngredient);
     }
 
-    /** Creates an ingredient; a name that is taken becomes a 409. */
+    /** Creates an ingredient with its name as first alias; a name taken in that language becomes a 409. */
     async create(dto: CreateIngredientDto): Promise<IngredientDto> {
+        const normalizedName = normalizeIngredientName(dto.name);
+
         try {
             const ingredient = await this.prisma.ingredient.create({
                 data: {
                     defaultUnit: dto.defaultUnit,
-                    ...(dto.language === Language.DE ? { nameDe: dto.name } : {}),
-                    ...(dto.language === Language.EN ? { nameEn: dto.name } : {}),
-                    nameNormalized: normalizeIngredientName(dto.name),
+                    ...(dto.language === Language.DE
+                        ? { nameDe: dto.name }
+                        : {}),
+                    ...(dto.language === Language.EN
+                        ? { nameEn: dto.name }
+                        : {}),
+                    nameNormalized: normalizedName,
+                    language: dto.language,
+                    ingredientAlias: {
+                        create: {
+                            alias: normalizedName,
+                            language: dto.language,
+                        },
+                    },
                 },
                 select: ingredientSelect,
             });

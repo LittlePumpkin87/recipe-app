@@ -5,6 +5,9 @@ import { AppModule } from '../app.module';
 import { RecipesService } from '../recipes/recipes.service';
 import { toImportRecipeInput, AllrecipesRecord } from './allrecipes.adapter';
 import { Prisma } from '../generated/prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
+import { loadIngredients } from './load-ingredient-catalog';
+import { join } from 'node:path';
 
 const PROGRESS_STEP = 1000;
 
@@ -56,6 +59,23 @@ async function main(): Promise<void> {
     let read = 0;
 
     try {
+        const prisma = app.get(PrismaService);
+        const catalogSize = await prisma.$transaction(
+            (transactionClient) =>
+                loadIngredients(
+                    transactionClient,
+                    join(
+                        __dirname,
+                        '..',
+                        '..',
+                        'prisma',
+                        'ingredient-catalog.json',
+                    ),
+                ),
+            { timeout: 60_000 },
+        );
+        console.log(`Loaded ${catalogSize} catalog entries`);
+
         const recipesService = app.get(RecipesService);
         const lines = createInterface({
             input: createReadStream(filePath),

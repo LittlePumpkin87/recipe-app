@@ -106,15 +106,17 @@ Three consequences follow:
   re-import empties it as well. The importer reads the file before the first
   recipe and creates the ingredients and their aliases.
 - **Both backends look up aliases.** `resolveIngredientIds` and
-  `ResolveIngredientsAsync` check `ingredient.name_normalized` first, then
-  `ingredient_alias.alias`. A lookup in Nest only would let `POST /recipes` on
-  the .NET side create the plural again.
+  `ResolveIngredientsAsync` resolve a name through `ingredient_alias`. A lookup
+  in Nest only would let `POST /recipes` on the .NET side create the plural
+  again. *The original order "`name_normalized` first, then the alias" was
+  replaced on 19 November 2026 by a lookup through aliases only, see "Aliases
+  have a language" below.*
 - **English candidates are generated, not decided.** English plurals are mostly
   regular, so a script proposes pairs such as egg/eggs from the imported names
   and a person confirms each one. German stays manual, for the reason above.
-  *Superseded on 9 November 2026 by the curated catalogue below.*
+  *Superseded on 9 November 2026 by the curated catalog below.*
 
-**Ingredients come from a curated catalogue, not from the import** (decided 9
+**Ingredients come from a curated catalog, not from the import** (decided 9
 November 2026). The first candidate list showed that plural pairs were the small
 problem. The pre-split fields of the allrecipes dataset lose words: `1 egg white`
 arrives as unit `egg` and name `white`, `1 jalapeno pepper` as name `pepper`
@@ -123,10 +125,11 @@ ingredient appears under up to 216 spellings. Repairing that with rules and
 reviewed aliases would never end, and every V3 URL import would bring new
 spellings.
 
-The catalogue is the fixed list of ingredients the app knows. An import will map
-each line to a catalogue entry through its aliases, and a recipe with a line that
-maps to nothing will be skipped. *Planned for #19; as of 12 November 2026 no
-code reads the catalogue yet.* Fewer recipes with a clean list beat all recipes
+The catalog is the fixed list of ingredients the app knows. An import will map
+each line to a catalog entry through its aliases, and a recipe with a line that
+maps to nothing will be skipped. *As of 25 November 2026 the seed and the
+importer load the catalog before the first recipe; skipping recipes with an
+unknown line is not built yet.* Fewer recipes with a clean list beat all recipes
 with a dirty one. The same lookup serves the V3 URL import, where an unknown
 name surfaces in the preview instead of creating a new ingredient.
 
@@ -157,8 +160,8 @@ table `ingredient_name` with one row per ingredient and locale. It would make a
 new language a matter of data instead of a migration, at the cost of a join on
 every recipe read, in Prisma and in EF Core. There will never be a third
 language, so that flexibility buys nothing. The API returns all names, the
-frontend picks one, the same way it renders a `Unit` value. *Not migrated yet:
-the schema still has only `name` and `name_normalized`.*
+frontend picks one, the same way it renders a `Unit` value. Migrated on 17
+November 2026 (`20261117112505_ingredient_display_names`).
 
 **Singular and plural may each be empty** (decided 17 November 2026). Whether a
 form is filled depends on the language, not on how the ingredient is bought or
@@ -175,26 +178,77 @@ A plural that equals the singular stays empty ("Hähnchenschenkel", "Cracker").
 Products that exist only in the plural have no singular, even where the word
 has one: nobody buys a canned diced tomato. When a name moved from plural to
 singular, the old spelling stayed as an alias, so the import still finds
-"black beans". The catalogue was filled on 17 November from a script proposal
+"black beans". The catalog was filled on 17 November from a script proposal
 (plural seen in the allrecipes lines or not) and corrected by hand for 258
 entries; German has no source data and was done by hand throughout. Odd cases
 that slipped through are fixed per recipe, not by a further pass.
 
 **`name_normalized` stays the unique key, in the language the ingredient was
 created in** (decided 17 November 2026). There is one column, not one per
-language. A catalogue entry is keyed by its English name, or by its English
-plural when there is no singular. An ingredient the catalogue does not know is
+language. A catalog entry is keyed by its English name, or by its English
+plural when there is no singular. An ingredient the catalog does not know is
 created from a recipe, and the recipe's `language` decides which display column
 gets the name and what the key is: "Möhren" in a German recipe becomes
 `name_de` = Möhren, `name_normalized` = möhren, with both English columns
 empty. The other language is reached through `ingredient_alias` only. The
 reason is the seed: Öl, Mehl, Möhren, Saure Sahne and Liebstöckel are not in the
-catalogue, so "always derive the key from the English name" has nothing to work
+catalog, so "always derive the key from the English name" has nothing to work
 with. Consequences: `name_en` and `name_de` are nullable, with a check that at
 least one name exists; `POST /ingredients` has no recipe and needs a `language`
 field of its own.
 
-**How the catalogue was built** (9–10 November 2026). The file is
+**Aliases have a language, and names are resolved through aliases only**
+(decided 19 November 2026, replacing "`name_normalized` first, then the alias").
+The reason is false friends. English "paprika" is the spice, German "Paprika" is
+the vegetable. A lookup without a language would turn a German recipe's Paprika
+into powder. So:
+
+- `ingredient_alias` has a `language` column, unique on (`alias`, `language`).
+  "paprika" can be an English alias of one entry and a German alias of another.
+- A recipe line is looked up as an alias in the recipe's language, nothing else.
+  `name_normalized` is no longer searched when resolving a line; it identifies
+  the row (the catalog loader upserts on it).
+- `ingredient` has a `language` column too, unique on (`name_normalized`,
+  `language`). Without it, a German "Paprika" created from a recipe would get
+  the key `paprika` and collide with the English spice. Dropping
+  `name_normalized` altogether was rejected: the column is still the database's
+  guarantee against duplicates, so a forgotten alias fails loudly instead of
+  leaving a silent second row.
+- **Every new ingredient gets its own name as an alias** at once, in the
+  language it is created in: in `POST /recipes`, `PATCH /recipes/:id`,
+  `POST /ingredients` and the seed, in both backends. A German recipe with
+  "Teeblätter" creates the row and the alias (teeblätter, DE); the next recipe
+  with "Teeblätter" finds the alias.
+
+Worked through with the catalog entry egg/eggs/Ei/Eier:
+
+| Request | Alias found | Result |
+|---|---|---|
+| German recipe, "Eier" | (eier, DE) | the catalog row egg |
+| English recipe, "eggs" | (eggs, EN) | the same row |
+| English recipe, "paprika" | (paprika, EN) | the spice |
+| German recipe, "Paprika" | none | a new row (paprika, DE) with its alias |
+| `POST /ingredients` "Eier", DE | (eier, DE) | 409 |
+| `POST /ingredients` "Eier", EN | none | 201, a new row |
+
+**The catalog format** (19 November 2026): each entry has `en`, `enPlural`,
+`de`, `dePlural` and `aliases: { "en": [...], "de": [...] }`. The alias lists
+hold only additional spellings. The loader (`apps/api/src/import/load-ingredient-catalog.ts`)
+adds the four display names as aliases itself, so a name and its alias cannot
+drift apart. It upserts every entry on (`name_normalized`, EN) and every alias
+on (`alias`, `language`), so it can run any number of times; a corrected name
+in the file reaches the database on the next run. 1,201 entries give 3,899
+alias pairs with no conflict within one language.
+
+**Duplicates across languages are merged, not prevented** (decided 19 November
+2026). An ingredient may have a name in one language only. Making both names
+mandatory was rejected: the repository is public, V4 brings other users and
+self-hosters, and a user who cooks in one language would be locked out. An
+English-only and a German-only row for the same thing can therefore exist; they
+are merged later (#45). The form will ask before creating an unknown name
+(#44).
+
+**How the catalog was built** (9–10 November 2026). The file is
 `apps/api/prisma/ingredient-catalog.json`, one entry per line, so a diff shows
 exactly which ingredient changed. It was not generated by an algorithm, and
 that matters for anyone extending it:
@@ -203,7 +257,7 @@ that matters for anyone extending it:
    `Ingredients_Raw` with `ingredient-parser-nlp` and counted the normalised
    names: 17,608 distinct names.
 2. **Cut-off.** `tools/ingredient-coverage.py` measured how many recipes a
-   catalogue of the top N names could map completely: 500 names → 20 %, 2,000
+   catalog of the top N names could map completely: 500 names → 20 %, 2,000
    → 54 %, 5,000 → 75 %, 8,000 → 84 %. The curve flattens because the long tail
    is one-off spellings. The top 2,000 were taken.
 3. **Grouping and translation by hand.** Claude grouped the 2,000 names into
@@ -216,7 +270,7 @@ that matters for anyone extending it:
    "red pepper") and checked a random sample of 40 entries.
 
 Result: 1,201 entries, 27,474 of 50,476 recipes (54.4 %) mapped completely.
-The rest will be skipped by the import. To extend the catalogue, run the coverage
+The rest will be skipped by the import. To extend the catalog, run the coverage
 tool: it lists the most frequent names that still block recipes.
 
 **What counts as one ingredient** (decided 10 November 2026). The rule is the
@@ -1076,8 +1130,8 @@ Schema changes, all of them plain migrations:
 - new `User` model
 - `Recipe` gains `ownerId` (FK) and `visibility` (enum `PRIVATE` / `PUBLIC`,
   defaulting to `PRIVATE`)
-- `IngredientAlias` gains `userId`, and its unique index moves from `alias` to
-  `@@unique([userId, alias])`
+- `IngredientAlias` gains `userId`, and its unique index moves from
+  `[alias, language]` to `@@unique([userId, alias, language])`
 - `Recipe`: `@@unique([sourceName, externalId])` becomes
   `@@unique([ownerId, sourceName, externalId])`, otherwise one user's import
   blocks everyone else's

@@ -10,6 +10,7 @@ import {
 } from '../src/generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { normalizeIngredientName } from '../src/common/normalize-name';
+import { loadIngredients } from '../src/import/load-ingredient-catalog';
 
 const adapter = new PrismaPg({ connectionString: process.env['DATABASE_URL'] });
 const prisma = new PrismaClient({ adapter });
@@ -250,10 +251,15 @@ async function seedIngredients(
     const ingredientIds = new Map<string, string>();
 
     for (const [normalizedName, { line, language }] of uniqueLines) {
-        const ingredient = await transactionClient.ingredient.upsert({
-            where: { nameNormalized: normalizedName },
-            update: {},
-            create: {
+        const alias = await transactionClient.ingredientAlias.findUnique({
+            where: { alias_language: { alias: normalizedName, language } },
+        });
+        if (alias !== null) {
+            ingredientIds.set(normalizedName, alias.ingredientId);
+            continue;
+        }
+        const ingredient = await transactionClient.ingredient.create({
+            data: {
                 ...(language === Language.EN
                     ? { nameEn: line.name.trim() }
                     : {}),
@@ -262,7 +268,14 @@ async function seedIngredients(
                     : {}),
 
                 nameNormalized: normalizedName,
+                language,
                 defaultUnit: line.defaultUnit,
+                ingredientAlias: {
+                    create: {
+                        alias: normalizedName,
+                        language: language,
+                    },
+                },
             },
         });
 
@@ -320,15 +333,25 @@ async function seedRecipes(
 async function main(): Promise<void> {
     assertLocalDatabase();
 
-    await prisma.$transaction(async (transactionClient) => {
-        await clearTables(transactionClient);
-        const ingredientIds = await seedIngredients(transactionClient, recipes);
-        await seedRecipes(transactionClient, recipes, ingredientIds);
+    await prisma.$transaction(
+        async (transactionClient) => {
+            await clearTables(transactionClient);
+            const catalogSize = await loadIngredients(
+                transactionClient,
+                join(__dirname, 'ingredient-catalog.json'),
+            );
+            const ingredientIds = await seedIngredients(
+                transactionClient,
+                recipes,
+            );
+            await seedRecipes(transactionClient, recipes, ingredientIds);
 
-        console.log(
-            `Seeded ${recipes.length} recipes, ${ingredientIds.size} ingredients.`,
-        );
-    });
+            console.log(
+                `Loaded ${catalogSize} catalog entries, seeded ${recipes.length} recipes, ${ingredientIds.size} ingredients.`,
+            );
+        },
+        { timeout: 60_000 },
+    );
 }
 
 main()

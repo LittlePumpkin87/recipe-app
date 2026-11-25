@@ -11,7 +11,7 @@ type IngredientEntry = {
 };
 
 /**
- * Writes the curated catalogue into `ingredient` and `ingredient_alias`.
+ * Writes the curated catalog into `ingredient` and `ingredient_alias`.
  * Every display name becomes an alias in its language; safe to run repeatedly.
  */
 export async function loadIngredients(
