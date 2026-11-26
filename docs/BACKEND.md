@@ -17,8 +17,9 @@ npm install <pkg> -w api    # add a dependency to the API, not to the root
 ```
 
 There is no test runner at the moment. Jest came with the Nest scaffold and was
-removed before any real test existed; see "deepmerge: removed with Jest" in
-`docs/DECISIONS.md`. The runner is chosen with the first test ticket.
+removed before any real test existed; see
+[`deepmerge`: removed with Jest](DECISIONS.md#deepmerge-removed-with-jest). The
+runner is chosen with the first test ticket.
 
 Always pass `-w api` when installing. Because npm workspaces hoist packages
 into the root `node_modules`, an import can resolve successfully even though

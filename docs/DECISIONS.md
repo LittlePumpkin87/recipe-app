@@ -1,7 +1,7 @@
 # Design decisions — recipe-app
 
 Why the project looks the way it does, including the alternatives that were rejected
-and why. Split out of the README so that the README stays a guide to running the
+and why. Split out of the [README](../README.md) so that the README stays a guide to running the
 project rather than a record of how it got here.
 
 New decisions are recorded in the closing comment of the issue they belong to and

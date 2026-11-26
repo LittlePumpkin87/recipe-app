@@ -64,7 +64,7 @@ Under development. See [Roadmap](#roadmap) for what is and is not implemented.
 - .NET SDK 10 (see `global.json`) — only for the second backend
 - Docker with Compose v2
 - Python 3 with a venv — only for the ingredient catalog tools, see
-  `docs/TOOLS.md`
+  [docs/TOOLS.md](docs/TOOLS.md)
 - Optionally a PostgreSQL client (`postgresql-client`, DBeaver, pgAdmin) to
   connect to the database from the host
 
@@ -239,7 +239,7 @@ deletes the database volume.
 
 `test:*` and `compare` run the seed, which empties all tables. Do not run them
 against a database that holds the bulk import. `compare` needs both backends
-running at the same time; see `docs/TOOLS.md`.
+running at the same time; see [docs/TOOLS.md](docs/TOOLS.md#compare-responsests).
 
 Workspace scripts, code conventions, CI and validation are described in
 [docs/BACKEND.md](docs/BACKEND.md).
