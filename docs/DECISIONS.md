@@ -7,7 +7,8 @@ project rather than a record of how it got here.
 New decisions are recorded in the closing comment of the issue they belong to and
 labelled `decision`. `is:issue is:closed label:decision` lists them.
 
-See also [README.md](../README.md) for setup, data model and API endpoints.
+See also [README.md](../README.md) for setup, and the other files in `docs/` for how the
+backend, the database, the API and the import work.
 
 ---
 
@@ -464,7 +465,7 @@ work started; the first of them has since been built.
 - **`updatedAt` — two database triggers, built on 12 October 2026** in migration
   `20261012080553_updated_at_triggers`. `@updatedAt` is Prisma
   client behaviour, not a database default (see
-  [Prisma Studio](../README.md#prisma-studio)). EF Core knows nothing about it, so a second
+  [Prisma Studio](DATABASE.md#prisma-studio)). EF Core knows nothing about it, so a second
   backend would have to carry the same rule a second time, and edited recipes
   would otherwise keep their creation timestamp. The rule lives in the
   database instead: a `BEFORE UPDATE` trigger on `recipe` sets
@@ -528,7 +529,7 @@ against both backends in the CI pipeline.
 Timestamps were a fourth such point and were settled in the database before the
 .NET work began: `created_at` and `updated_at` are `timestamptz`, which Npgsql
 maps to a `DateTime` of kind `Utc`. With plain `timestamp` columns it would have
-refused to write a UTC `DateTime` at all. See [Timestamps](../README.md#timestamps).
+refused to write a UTC `DateTime` at all. See [Timestamps](DATABASE.md#timestamps).
 
 **One `DATABASE_URL`, two spellings.** Both backends read the same variable from
 the same `.env`, but they do not accept the same format. Prisma expects the URI
@@ -677,7 +678,7 @@ as it is.
 the column on insert and read the value back, leaving id generation to Postgres
 18 the way Prisma does. Timestamps appear as `HasPrecision(3)` with no explicit
 column type, because Npgsql maps `DateTime` to `timestamptz` by default; see
-[Timestamps](../README.md#timestamps).
+[Timestamps](DATABASE.md#timestamps).
 
 ### The reading endpoints
 
@@ -688,7 +689,7 @@ versions, but four things had to be arranged differently to get there.
 **The projection is the column list.** On the Prisma side, picking columns and
 shaping the response are two separate steps: `select: recipeListSelect` names the
 columns, `toRecipeListItem` builds the object (see
-[DTOs, mappers and validation](../README.md#dtos-mappers-and-validation)). EF Core has no
+[DTOs, mappers and validation](BACKEND.md#dtos-mappers-and-validation)). EF Core has no
 equivalent of that first step. A mapping function taking a loaded `Recipe` would
 force every column to be read first, `instructions` included — the one thing the
 overview is supposed to avoid. Written into the query instead, as
@@ -782,7 +783,7 @@ transaction. What it had to settle applies to every write that follows.
 
 **The unique index decides, in both languages.** Neither backend looks for an
 existing row before it writes — the reasoning is in
-[Duplicates: let the constraint decide](../README.md#duplicates-let-the-constraint-decide)
+[Duplicates: let the constraint decide](API.md#duplicates-let-the-constraint-decide)
 and does not change with the language. What changes is the shape of the refusal.
 Prisma raises `P2002`; Npgsql raises a `PostgresException` whose `SqlState` is
 `23505`, the SQLSTATE that Prisma's code stands for, available as
@@ -903,7 +904,7 @@ replay a cascade in memory for entities it has loaded, and here it has loaded no
 what removes the `recipe_ingredient` rows is `ON DELETE CASCADE` on the foreign key,
 inside the same statement. Which is what makes the missing transaction correct rather
 than merely convenient: one statement is always all or nothing. See
-[`DELETE /recipes/:id`](../README.md#delete-recipesid-one-statement-no-transaction).
+[`DELETE /recipes/:id`](API.md#delete-recipesid-one-statement-no-transaction).
 
 **There is no `PartialType` in C#, so `UpdateRecipeDto` is written out.** Nest derives
 its update DTO from the create DTO and relaxes it; C# cannot, because validation rules

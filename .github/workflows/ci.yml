@@ -52,7 +52,7 @@ jobs:
         run: npm run build:dotnet
       
       - name: deploy db migration
-        run: npm run db:deploy
+        run: npm run db:deploy 
 
       - name: start Nest API
         run: npm run serve:nest > nest.log 2>&1 &

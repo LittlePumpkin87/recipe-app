@@ -9,7 +9,7 @@ single quotes, which `JSON.parse` cannot read. This script fixes both.
 It also adds `Ingredient_Names`: the names ingredient-parser-nlp reads from each
 line of `Ingredients_Raw`, at the same index, because the parser exists only in
 Python. Everything else keeps the shape the source gave it; interpreting it is
-the importer's job. See tools/README.md.
+the importer's job. See docs/TOOLS.md.
 """
 
 import ast

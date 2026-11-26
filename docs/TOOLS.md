@@ -1,11 +1,11 @@
-# tools
+# Tools — `tools/`
 
 Utilities that belong to neither backend and are not part of the running
 application: one prepares external data for import, two maintain the
 ingredient catalog, one compares the two backends in CI.
 
 The data itself is **not** in this repository — `data/` is ignored. What is kept
-here is the procedure, so that a local database can be rebuilt from the same
+in this file is the procedure, so that a local database can be rebuilt from the same
 source and so that it stays recorded where the recipes came from.
 
 ## `allrecipes-csv-to-json.py`
@@ -28,8 +28,8 @@ The Zenodo record states ODC-ODbL v1.0. That is the uploader's statement about
 their own compilation — the recipe texts belong to allrecipes.com and their
 authors.
 
-Consequences, in line with [Shipped starter recipes](../docs/DECISIONS.md#shipped-starter-recipes)
-and [Multi-user (V4)](../docs/DECISIONS.md#multi-user-v4):
+Consequences, in line with [Shipped starter recipes](DECISIONS.md#shipped-starter-recipes)
+and [Multi-user (V4)](DECISIONS.md#multi-user-v4):
 
 - the data stays local and private; none of it enters this repository
 - no imported recipe ever becomes `visibility: PUBLIC`
@@ -99,8 +99,9 @@ unreadable fields per column:
        1 Instructions
 ```
 
-47 unreadable fields out of roughly 455,000 — none of them in `Ingredients`,
-the column the import depends on. A field that cannot be parsed keeps its
+47 unreadable fields out of roughly 455,000. The 35 in `Ingredients_Raw` matter:
+the parser reads its names from that column, so those recipes get
+`Ingredient_Names: null` and the importer skips them. A field that cannot be parsed keeps its
 original text under `_unparsed` rather than becoming `null`, so nothing is lost
 silently.
 
@@ -120,7 +121,7 @@ Two notes for the importer:
 `ingredient-inventory.py` and `ingredient-coverage.py` built the ingredient
 catalog in `apps/api/prisma/ingredient-catalog.json` and keep it maintainable.
 Why the catalog exists and how it was built is in
-[DECISIONS.md](../docs/DECISIONS.md#data-model-decisions).
+[DECISIONS.md](DECISIONS.md#data-model-decisions).
 
 Both read the lines with [`ingredient-parser-nlp`](https://github.com/strangetom/ingredient-parser)
 (MIT), as does `allrecipes-csv-to-json.py`, which needs a virtual environment.

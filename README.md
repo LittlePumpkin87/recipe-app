@@ -18,9 +18,10 @@
 > sign-up. Opening it up as a multi-user application is the long-term plan and is already
 > designed — see [Multi-user (V4)](docs/DECISIONS.md#multi-user-v4).
 >
-> The V1 API is deliberately built **twice** — once in NestJS, once in ASP.NET Core against
-> the same PostgreSQL database and the same contract. That second implementation is the
-> point of the project as much as the application is.
+> It is also a learning project for backend development, which is why the V1 API exists
+> **twice**: once in NestJS, once in ASP.NET Core, against the same PostgreSQL database and
+> the same contract. CI runs both and compares their answers. Running the application
+> needs only one of them; NestJS is the default.
 
 ## ✨ Why this exists
 
@@ -52,7 +53,7 @@ Under development. See [Roadmap](#roadmap) for what is and is not implemented.
 | -------------- | ---------------------------------------------- |
 | Backend        | NestJS, TypeScript                             |
 | ORM            | Prisma                                         |
-| Second backend | ASP.NET Core, C#, EF Core — in progress, [see decisions](docs/DECISIONS.md#second-backend-aspnet-core) |
+| Second backend | ASP.NET Core, C#, EF Core — same API, optional, [see decisions](docs/DECISIONS.md#second-backend-aspnet-core) |
 | Database       | PostgreSQL 18                                  |
 | Frontend       | Angular, standalone components                 |
 | Runtime        | Docker Compose                                 |
@@ -63,7 +64,7 @@ Under development. See [Roadmap](#roadmap) for what is and is not implemented.
 - .NET SDK 10 (see `global.json`) — only for the second backend
 - Docker with Compose v2
 - Python 3 with a venv — only for the ingredient catalog tools, see
-  `tools/README.md`
+  `docs/TOOLS.md`
 - Optionally a PostgreSQL client (`postgresql-client`, DBeaver, pgAdmin) to
   connect to the database from the host
 
@@ -103,10 +104,10 @@ npm run start:nest
 The API listens on http://localhost:3000.
 
 Step 5 is the one that is easy to miss: steps 1 to 4 leave you with a running
-but completely empty database. See [Prisma and migrations](#prisma-and-migrations)
+but completely empty database. See [Prisma and migrations](docs/DATABASE.md#prisma-and-migrations)
 for what that command does and why Prisma runs from inside `apps/api` (the
 `db:*` scripts change into it for you). All root scripts are listed in the
-Backend section below.
+Scripts section below.
 
 Verify that the database is up:
 
@@ -118,7 +119,10 @@ docker compose ps          # db should report "healthy"
 
 The second backend serves the same endpoints from the same database. Only one of
 them runs at a time. Steps 1 to 5 above still apply — the database and its tables
-are shared, and Prisma owns the schema either way.
+are shared, and Prisma owns the schema either way. Node.js is therefore needed
+for the .NET backend too: Prisma applies the migrations, and the seed and the
+ingredient catalog are loaded by TypeScript scripts. The .NET API itself runs
+without it.
 
 ```bash
 npm run start:dotnet
@@ -132,7 +136,7 @@ takes `{{host}}` from `http-client.env.json`, which defines two environments,
 switch; on the command line:
 
 ```bash
-npm run http:dotnet    # reseeds, then sends every request to port 5000
+npm run test:dotnet    # reseeds, then sends every request to port 5000
 ```
 
 The script runs the seed first, because the requests expect the development
@@ -189,8 +193,10 @@ This is an npm workspaces monorepo. Application packages live under `apps/`.
 │       ├── Exceptions/     # ConflictException and its handler (409)
 │       ├── Utility/        # DATABASE_URL → Npgsql, name normalizing, decimal validation
 │       └── Properties/     # launchSettings.json — local ports only
+├── .github/workflows/      # ci.yml — builds and compares both backends
 ├── .config/                # dotnet-tools.json — pins dotnet-ef
-├── tools/                  # data preparation, catalog tools, CI compare script — see tools/README.md
+├── docs/                   # every .md besides this README, see Documentation below
+├── tools/                  # data preparation, catalog tools, CI compare script — see docs/TOOLS.md
 ├── data/                   # downloaded data sets — gitignored, never committed
 ├── requests.http           # example requests — tests either backend
 ├── http-client.env.json    # httpYac environments: nest (3000), dotnet (5000)
@@ -200,7 +206,7 @@ This is an npm workspaces monorepo. Application packages live under `apps/`.
 └── .env.example            # template for .env
 ```
 
-## ⚙️ Backend
+## ⚙️ Scripts
 
 The root `package.json` holds short scripts for the commands used every day:
 
@@ -215,6 +221,7 @@ npm run db:migrate     # prisma migrate dev; add a name with: -- --name <name>
 npm run db:deploy      # prisma migrate deploy
 npm run db:seed        # wipe and rewrite the development data
 npm run db:studio      # prisma studio
+npm run db:read        # re-scaffold the EF Core models from the database
 npm run start:nest     # NestJS in watch mode, port 3000
 npm run start:dotnet   # ASP.NET Core, port 5000
 npm run build          # build both backends (build:nest, build:dotnet)
@@ -230,144 +237,12 @@ npm run import:allrecipes
 does. There is deliberately no script for `docker compose down -v`, which
 deletes the database volume.
 
-`http:*` and `compare` run the seed, which empties all tables. Do not run them
+`test:*` and `compare` run the seed, which empties all tables. Do not run them
 against a database that holds the bulk import. `compare` needs both backends
-running at the same time; see `tools/README.md`.
+running at the same time; see `docs/TOOLS.md`.
 
-The API is an npm workspace named `api`. Run its scripts from the repository
-root using the `-w` flag:
-
-```bash
-npm run start:dev -w api    # watch mode
-npm run start:prod -w api   # run the compiled build from dist/
-npm run build -w api        # production build
-npm run lint -w api         # oxlint over src/
-npm run format -w api       # prettier over src/
-npm install <pkg> -w api    # add a dependency to the API, not to the root
-```
-
-There is no test runner at the moment. Jest came with the Nest scaffold and was
-removed before any real test existed; see "deepmerge: removed with Jest" in
-`docs/DECISIONS.md`. The runner is chosen with the first test ticket.
-
-### CI
-
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push and
-pull request. It starts a PostgreSQL 18 service, builds both backends, applies
-the migrations, seeds, starts both APIs and runs `npm run compare`. On failure
-it prints both server logs. The workflow needs the repository secrets
-`POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_DB`.
-
-Always pass `-w api` when installing. Because npm workspaces hoist packages
-into the root `node_modules`, an import can resolve successfully even though
-the dependency is not declared in `apps/api/package.json` — which only breaks
-once the API is deployed on its own.
-
-Environment variables are read from the `.env` file in the repository root.
-`npm run <script> -w api` sets the working directory to `apps/api`, not to the
-repository root, so both places that load the file resolve it two levels up:
-`ConfigModule` in `src/app.module.ts` for the running application, and
-`prisma7.config.ts` for the Prisma CLI.
-
-Inside `src/`, each area of the domain gets one folder holding three files: a
-module, a controller and a service. The controller receives HTTP requests and
-knows about paths, status codes and query parameters. The service holds the
-logic and is the only place a database query may live. The module wires the two
-together — it binds the controller to routes at startup and makes the service
-injectable, but takes no part in handling a request.
-
-The split pays off when the data source changes: turning a service method into
-a Prisma query leaves its controller untouched. New folders are created with
-`npx nest g module <name>` from inside `apps/api`, which also registers the
-module in `src/app.module.ts`.
-
-The API is compiled to CommonJS. `apps/api/tsconfig.json` sets
-`"module": "nodenext"`, which defers to the `type` field of the nearest
-`package.json`; since none is set, the emitted output is CommonJS and relative
-imports are written without a file extension.
-
-A doc block says what a declaration is or does, in one sentence — never why.
-The reasoning lives in this README and in [docs/DECISIONS.md](docs/DECISIONS.md),
-so there is one version of it that cannot drift from a second copy in the code.
-A self-explanatory interface gets no block at all. Where a block exists, it sits
-directly above the declaration, not above the imports: TypeScript attaches the
-text to the symbol, so hovering `PrismaService` anywhere in the editor shows it
-without opening the file. The .NET backend follows the same rule with
-`/// <summary>`.
-
-### DTOs, mappers and validation
-
-No Prisma row ever leaves a service. Each feature folder holds a `dto/` folder
-and a mapper, and the three shapes involved are deliberately different:
-
-| | Prisma model | Response DTO | Request DTO |
-|---|---|---|---|
-| Describes | how a row is stored | what the API returns | what a client may send |
-| `ingredient.id` | ✓ | ✓ | —, Postgres assigns it |
-| `ingredient.nameNormalized` | ✓ | — | —, the service derives it |
-
-`RecipeDetailDto` shows why this is not busywork: it exposes a field called
-`ingredients` that exists in no table. In the database the relation is called
-`recipeIngredients` and the ingredient name sits one table deeper; the mapper
-pulls it up and converts `amount` from a Prisma `Decimal` to a plain number,
-which would otherwise serialise as a quoted string. The join row's own `id` and
-`recipeId` are dropped: neither means anything outside the database. The list DTO drops
-`instructions` entirely so the overview stays small as the recipe count grows.
-
-Each mapper derives its input type from the same `select` or `include` constant
-the service queries with — `Prisma.RecipeGetPayload<{ select: typeof
-recipeListSelect }>` — so a column removed from the query becomes a compiler
-error in the mapper rather than an `undefined` in a response.
-
-**Response DTOs are interfaces, request DTOs are classes.** That is not a style
-choice. `main.ts` registers a global `ValidationPipe`:
-
-```ts
-app.useGlobalPipes(
-  new ValidationPipe({
-    whitelist: true,
-    forbidNonWhitelisted: true,
-    transform: true,
-  }),
-);
-```
-
-A pipe runs between the request and the controller method: it receives the raw
-value, returns the value the parameter will hold, or throws. `ParseUUIDPipe` on
-`GET /recipes/:id` is the same mechanism in its smallest form.
-
-The `class-validator` decorators — `@IsString()`, `@MaxLength(120)` — do not
-check anything by themselves. They register metadata, and the pipe is what calls
-`validate()` and reads it. To know *which* class to validate against, the pipe
-reads the declared type of the parameter, which the compiler emits thanks to
-`emitDecoratorMetadata`. An interface is erased at compile time and leaves
-nothing to read, so a request DTO written as an interface would be waved
-through unchecked. Response DTOs are never validated and stay interfaces.
-
-The three options each buy something specific. `whitelist` drops properties that
-carry no validation decorator, so a client cannot smuggle in an `id`.
-`forbidNonWhitelisted` turns that silent drop into a 400 naming the field, which
-is the difference between debugging a typo and not noticing it. `transform`
-turns the parsed JSON into a real instance of the DTO class, which is what
-nested DTOs and type coercion need.
-
-Validation rules belong in the DTO even where the database has its own
-constraint. `NOT NULL` forbids `NULL`, not `""` — a minimum length is an API
-question. `@MaxLength(120)` mirrors `@db.VarChar(120)` on purpose: the database
-protects itself, the DTO tells the client what is allowed, and the difference
-shows up as a 400 with a field name instead of a 500 with a database error.
-
-**Optional is not the same as nullable.** `@IsOptional()` skips every other rule
-when a value is `undefined` *or* `null`. That is right for a column that may be
-empty — `"description": null` clears the description — and wrong for one that
-should not be: `"servings": null` would pass validation and be stored as
-`NULL`. The column itself is nullable since the `20261012120359_update`
-migration, so only the DTO keeps the value out. Such fields use
-`@ValidateIf((_, value) => value !== undefined)` instead: a missing value is
-skipped, `null` is validated and rejected with a 400. `UpdateRecipeDto` is built
-with `PartialType(CreateRecipeDto, { skipNullProperties: false })` for the same
-reason — the option makes `PartialType` add that `@ValidateIf` rather than
-`@IsOptional` to every field it turns optional.
+Workspace scripts, code conventions, CI and validation are described in
+[docs/BACKEND.md](docs/BACKEND.md).
 
 ## 🗄️ Data model
 
@@ -389,590 +264,36 @@ erDiagram
 | `IngredientAlias` | Every spelling of an ingredient, per language, normalized: (eier, DE) and (eggs, EN) both point at the row "egg". Unique on (`alias`, `language`). A recipe line is resolved through this table only. |
 | `RecipeIngredient` | Join table between the two, carrying `amount`, `unit`, a per-line `note`, a `groupLabel` and the `position` within the recipe. |
 
-### Naming convention
-
-Models are PascalCase and singular in the schema (`Recipe`), fields are
-camelCase. In Postgres everything is snake_case, produced by `@@map` on models
-and enums and `@map` on multi-word columns. The enum is easy to forget: without
-`@@map("unit")` the type is created as `"Unit"` and needs quoting everywhere,
-even though every table around it does not.
-
-The reason is ergonomic: Prisma quotes identifiers when creating them, so an
-unmapped model would become a table named `"IngredientAlias"` that needs double
-quotes in every hand-written `psql` query. Enum values are English like the rest
-of the repository; the display form is the frontend's job.
-
-Note that PascalCase applies to model *names* only, not to their fields.
-
-<a id="prisma-and-migrations"></a>
-
-## 🧬 Prisma and migrations
-
-The schema lives in `apps/api/prisma/schema.prisma`, migrations in
-`apps/api/prisma/migrations/`.
-
-```bash
-cd apps/api
-
-npx prisma migrate dev --name <name>   # create and apply a migration
-npx prisma migrate dev --name <name> --create-only   # write the SQL only, apply later
-npx prisma migrate deploy              # apply existing migrations (production)
-npx prisma db seed                     # wipe and rewrite the development data
-npx prisma studio                      # browse and edit data in the browser
-npx prisma validate                    # check the schema
-npx prisma format                      # format and complete relations
-```
-
-**These are the only commands run from inside `apps/api`.** Everything else uses
-`-w api` from the root. Prisma resolves `schema.prisma` relative to the working
-directory, and `apps/api/prisma7.config.ts` loads the repository-root `.env`
-explicitly, two levels up, before handing `DATABASE_URL` to the datasource. That
-config file exists precisely because the `.env` does not sit next to the schema.
-
-**Read a migration that touches existing data before it runs.** `--create-only`
-writes the SQL file without applying it; read it, then run `npx prisma migrate
-dev`. One trap: `--create-only` only holds back the *new* migration. `migrate
-dev` always applies pending migrations first, so running `--create-only` a
-second time applies the first one — and, finding nothing left to change, writes
-an empty migration next to it. Delete an empty one before it is applied; once it
-is recorded in `_prisma_migrations`, removing the folder makes Prisma report the
-history as out of sync.
-
-**Migration files are committed.** Prisma writes plain SQL into
-`prisma/migrations/<timestamp>_<name>/migration.sql`, and the applied history is
-tracked in a `_prisma_migrations` table inside the database. That is what lets a
-fresh clone reach the identical schema, and what makes a schema change
-reviewable in a pull request.
-
-**The generated client is not committed.** The generator writes to
-`apps/api/src/generated/prisma`, which is listed in `apps/api/.gitignore`. It is
-build output derived from the schema and would otherwise produce enormous, noisy
-diffs. Since Prisma 7, `prisma migrate dev` no longer regenerates it: run
-`npx prisma generate` after every schema change, or the types lag behind the
-database without any error until code uses a new column.
-
-**Prisma 7 requires a driver adapter.** The Rust query engine is gone, so the
-client cannot open a connection by itself — which is why the `datasource` block
-in `schema.prisma` carries no `url`. `@prisma/adapter-pg` wraps the `pg` driver
-and is handed to the client when it is constructed, in
-`apps/api/src/prisma/prisma.service.ts`:
-
-```ts
-const adapter = new PrismaPg({
-  connectionString: config.getOrThrow<string>('DATABASE_URL'),
-});
-super({ adapter });
-```
-
-Three consequences. The connection string reaches the *adapter*, never the
-client, so guides written for Prisma 5 or 6 that pass a URL to
-`new PrismaClient()` no longer apply. `@prisma/adapter-pg` and `@prisma/client`
-must be kept on the same version, because they speak an internal protocol that
-may change between releases — upgrade them together. And `pg` is deliberately
-not a direct dependency; the adapter brings it, so only one place pins its
-version.
-
-`DATABASE_URL` reaches the service through `ConfigService`, not through
-`process.env` directly. `getOrThrow` aborts the start with the name of the
-missing variable instead of failing later, on the first request.
-
-### Seeding
-
-`prisma/seed.ts` fills an empty database with development data. It is registered
-in `prisma7.config.ts` under `migrations.seed` and runs via `npx prisma db seed`
-from inside `apps/api`.
-
-**It is destructive by design.** Every run empties `recipe_ingredient`, `recipe`
-and `ingredient` — in that order, because foreign keys forbid the reverse — and
-writes the same recipes again. The result is identical on every run, which is
-the point: development against a known data set. `ingredient_alias` needs no
-call of its own, its foreign key cascades.
-
-Because `deleteMany()` without a `where` clause deletes every row without
-confirmation, the script refuses to run unless `DATABASE_URL` points at
-`localhost` or `127.0.0.1`.
-
-**It is not a delivery mechanism.** A handful of recipes is enough, because
-their only job is to prove that a shared ingredient resolves to a single
-`ingredient` row. Real recipes arrive through `POST /recipes`, the bulk import
-below and, from V3, the URL importer — see [Shipped starter recipes](docs/DECISIONS.md#shipped-starter-recipes).
-
-Before the recipes, the seed loads the ingredient catalog
-(`apps/api/prisma/ingredient-catalog.json`, 1,201 entries) through the same
-`loadIngredients` the importer uses. 8 of the 17 seed ingredients are catalog
-entries, the other 9 are created. The transaction gets `timeout: 60_000`, since
-the catalog alone is about 5,100 queries and Prisma's default is 5 seconds.
-
-The seed is also the rehearsal for `POST /recipes`: normalise the name, look it
-up as an alias in the recipe's language or create the ingredient together with
-its alias, keep the ids in a `Map`, then write the recipes and their join rows —
-all inside one `$transaction`. Every call within that
-block goes through `transactionClient`, never through `prisma`, or it runs
-outside the transaction and is not rolled back with it. The name is longer than
-the usual `tx` on purpose: it is Prisma's own type name
-(`Prisma.TransactionClient`), and it makes a stray `prisma.` call inside the
-block stand out.
-
-**`prisma format` completes as well as formats.** Given half a relation it will
-add the missing opposite field, move `@relation` to the side holding the foreign
-key, and turn a singular relation field into a list. It makes a schema *valid*,
-not *correct* — it never decides `onDelete` for you, because that is a
-behavioural choice. Run it once you are happy with what you wrote, otherwise you
-lose track of which lines are yours.
-
-### Bulk import: allrecipes
-
-`src/import/import-allrecipes.ts` fills the database with about 24,700 English
-recipes from a public allrecipes.com dump — those whose ingredients the
-catalog knows completely. Where the data comes from, its
-licence and how to produce `data/allrecipes.ndjson` from it is described in
-[tools/README.md](tools/README.md). The data stays local; none of it is in this
-repository.
-
-**Step by step**, from the repository root, with the database running and
-migrated (steps 3 and 5 of [Getting started](#-getting-started)):
-
-1. Download `dataset.csv` from [Zenodo record 15169428](https://zenodo.org/records/15169428)
-   into `data/`.
-2. Create the Python environment for the tools, once:
-
-   ```bash
-   python3 -m venv tools/.venv
-   tools/.venv/bin/pip install -r tools/requirements.txt
-   ```
-
-3. Convert the CSV into `data/allrecipes.ndjson`. This runs the ingredient
-   parser over every ingredient line and takes several minutes; a progress bar
-   shows how far it is:
-
-   ```bash
-   tools/.venv/bin/python tools/allrecipes-csv-to-json.py
-   ```
-
-4. Empty the tables and run the import:
-
-   ```bash
-   docker compose exec db psql -U recipe -d recipe \
-     -c 'TRUNCATE recipe_ingredient, ingredient_alias, recipe, ingredient;'
-   cd apps/api && npm run import:allrecipes
-   ```
-
-The NDJSON only has to be produced again when the source or the converter
-changes; the import can be repeated from step 4.
-
-All four tables go into one `TRUNCATE`, because Postgres refuses to empty a
-table that another table still references.
-
-**It is a script, not an endpoint.** It starts Nest as an application context,
-without HTTP, and writes every recipe through `RecipesService.importRecipe()`
-as one nested `create`, which Prisma runs as a transaction. The npm script compiles with `nest build` and runs
-the result with `node`; `tsx` would be shorter but does not emit the decorator
-metadata Nest's dependency injection reads. `class-validator` does not run
-either — the `ValidationPipe` belongs to HTTP — so the adapter
-(`allrecipes.adapter.ts`) does the checking itself.
-
-**What the counters mean.** Each line of the file ends up in exactly one:
-
-| Counter | Meaning |
-|---|---|
-| `imported` | written |
-| `skipped` | rejected by the adapter before any write: broken source data |
-| `unknown` | a line names an ingredient the catalog does not know; nothing written |
-| `duplicates` | refused by the unique index on (`source_name`, `external_id`) — the source holds about 2,100 copies |
-| `failed` | any other error; the source URL is printed |
-
-The run on 25 November 2026 read 50,513 lines: 24,745 imported, 21,060
-unknown, 3,479 skipped, 1,229 duplicates, 0 failed. `ingredient` held 1,201 rows
-before and after — the catalog and nothing else.
-
-**The import creates no ingredients.** It loads the ingredient catalog first:
-`apps/api/prisma/ingredient-catalog.json` (1,201 entries) goes into `ingredient`
-and `ingredient_alias` in a transaction of its own. The importer then reads all
-English aliases once into a map, alias → ingredient id. The catalog cannot
-change during the run, so every recipe is resolved in memory, without a query
-per line. A recipe with one line that matches no alias counts as `unknown` and
-is not written. `POST /recipes` and `PATCH /recipes/:id` are not affected: they
-still create an ingredient they do not know. See
-[Data model decisions](docs/DECISIONS.md#data-model-decisions).
-
-**How a line is read.** The ingredient name comes from `Ingredient_Names`, which
-the converter fills with `ingredient-parser-nlp` (see
-[tools/README.md](tools/README.md)). Amount, unit and note come from the
-source's own split into name, quantity, unit and remainder, with the original
-line (`Ingredients_Raw`) as a fallback:
-
-| Source line | Stored as |
-|---|---|
-| `2 cups white sugar` | `white sugar`, 2, `CUP` |
-| `1 (18.25 ounce) package yellow cake mix` | `yellow cake mix`, 1, `PACK`, note `18.25 ounce` |
-| `5 fluid ounces heavy cream` | `heavy cream`, 5, `FLUID_OUNCE` |
-| `1 (14.5 ounce) can diced tomatoes` | `canned diced tomatoes`, 1, `CAN` |
-| `1 teaspoon crushed red pepper` | `red pepper flakes`, 1, `TEASPOON` |
-| `0.33 cup butter or margarine, melted` | `butter`, 0.33, `CUP`, note `or margarine, melted` |
-| `salt and ground black pepper to taste` | two lines: `salt` and `black pepper`, each with note `to taste` |
-
-The second row: the source leaves the unit empty and drops the decimal point
-from the size, so the container word and the size are taken from the original
-line. The third: the source cuts "fluid ounces" in half and leaves "ounces" at
-the front of the name. Rows four and five are the two rules that read the
-original line: the parser drops "can" and "crushed", and those words decide the
-product. Rows six and seven: when the parser finds several names in one line,
-a line with "or" keeps the first as the ingredient and the rest in the note, so
-the shopping list counts one; any other line becomes one row per name, with the
-amount on the first only.
-
-**What gets skipped.** A recipe without a recipe id in its URL, without
-instructions or ingredients, without parsed names, with a title over 100
-characters, or with an ingredient whose name in the source's split is empty or
-begins with a dash or a digit. The last rule protects the amount, not the name:
-`1 1/4 cups white sugar` arrives as name `14 cups white sugar` with amount 1.
-The parser fixes the name but the amount would still be wrong. For the same
-reason a recipe is skipped when the split name is a broken phrase (`and cooled
-rice`) and the original line begins with a digit (`2 cups cooked and cooled
-rice`): there is no amount to trust.
-
-**Do not seed afterwards.** `npx prisma db seed` empties every table, imported
-recipes included.
-
-### Prisma Studio
-
-```bash
-cd apps/api && npx prisma studio
-```
-
-Opens a browser UI on http://localhost:51212. This is the tool to reach for when
-working with *data*; use `psql` or a SQL client for questions about *structure*.
-
-Two things it does that a generic SQL client cannot:
-
-**It knows the schema.** Relations are links rather than raw UUIDs, so a recipe
-lists its ingredients and each one navigates through to the ingredient itself.
-`unit` is a dropdown of the `Unit` enum, not a free-text field that lets you
-type a value the column will reject.
-
-**It writes through the Prisma client, so client-side behaviour applies.** `id`,
-`created_at` and `updated_at` all have database-level defaults — see the
-`db_level_defaults` migration — so a hand-written `INSERT` in psql that omits
-them works too. `updated_at` is set by database triggers (migration
-`20261012080553_updated_at_triggers`), so an `UPDATE` in psql moves it just like
-the same edit in Studio does.
-
-It is worth having open while building `POST /recipes`: seeding an ingredient by
-hand and watching the join rows appear is faster feedback than a test run.
+Naming, migrations, the seed and working with the container:
+[docs/DATABASE.md](docs/DATABASE.md).
 
 ## 🔌 API endpoints
 
 V1 only. There is no login, and no endpoint is authenticated. Both backends serve
-the same contract; the two columns track how far the second one has got.
+the same contract.
 
-| Method | Path | Purpose | NestJS | .NET |
-|---|---|---|---|---|
-| GET | `/recipes` | List, with optional `?search=` on the title | built | built |
-| GET | `/recipes/:id` | Single recipe including its ingredients | built | built |
-| POST | `/recipes` | Create, including the ingredient list | built | built |
-| PATCH | `/recipes/:id` | Update; a present ingredient list replaces the old one | built | built |
-| DELETE | `/recipes/:id` | Delete, `204` without a body | built | built |
-| GET | `/ingredients` | Autocomplete, `?search=`, capped at 20 results | built | built |
-| POST | `/ingredients` | Create an ingredient, 409 if the name exists | built | built |
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/recipes` | List, with optional `?search=` on the title |
+| GET | `/recipes/:id` | Single recipe including its ingredients |
+| POST | `/recipes` | Create, including the ingredient list |
+| PATCH | `/recipes/:id` | Update; a present ingredient list replaces the old one |
+| DELETE | `/recipes/:id` | Delete, `204` without a body |
+| GET | `/ingredients` | Autocomplete, `?search=`, capped at 20 results |
+| POST | `/ingredients` | Create an ingredient, 409 if the name exists |
 
-### How the two searches differ
+How each endpoint works behind the table: [docs/API.md](docs/API.md).
 
-Both search endpoints take `?search=` and both match on a substring, but they
-compare against different columns, and the reason is worth knowing before
-copying one into the other.
+## ⚡ Feature spotlight: one request, one transaction
 
-`GET /recipes?search=` filters on `recipe.title`, which stores the display form.
-There is no second column to compare against, so the query asks Postgres to
-ignore case with `mode: 'insensitive'` — Prisma turns that into `ILIKE`.
-
-`GET /ingredients?search=` filters on `ingredient.nameNormalized` and pushes the
-search term through the same `normalizeIngredientName` that wrote the column.
-Both sides are lowercase, trimmed and NFC-normalized by the time they meet, so
-no `mode` is needed. It is also the more correct of the two: `ILIKE` handles
-case, but not an `ö` that arrived as `o` plus a combining diaeresis — a real
-possibility with text pasted from elsewhere.
-
-The rule that follows: **compare normalized values, display one of the four
-names.** The search compares against `nameNormalized`; `POST /ingredients` and
-the lookup inside `POST /recipes` compare against `ingredient_alias.alias`, which
-is stored normalized as well. The search does not read aliases yet, so a
-catalog entry is found by its English key ("salt", not "Salz"); searching all
-aliases comes with #44. The API returns all four names; the frontend picks the
-one for its language, falling back to the other number when one form is missing.
-
-Recipe titles have no normalized column and do not need one. `?search=roemer`
-finding *Römertopfbrot* is a nice-to-have; an ingredient list that grows a
-second `Öl` row is a data defect.
-
-The same split exists in the .NET API, one layer closer to the SQL: the recipe
-search uses `EF.Functions.ILike`, the ingredient search `EF.Functions.Like`. See
-[The reading endpoints](docs/DECISIONS.md#the-reading-endpoints) for why the
-weaker operator is the right one on a normalized column.
-
-### `POST /recipes`: one request, one transaction
-
-`POST /recipes` receives the recipe and its ingredient list in a single request.
-Ingredients are referenced by name, never by id. For each line the service
-normalizes the name and looks it up in `ingredient_alias` with the recipe's
-`language`: a hit links that ingredient, otherwise a new one is created together
-with its name as the first alias, in one nested write. English "paprika" is
-therefore the spice from the catalog, while German "Paprika" finds no alias
-(paprika, DE) and becomes an ingredient of its own. A name that appears twice in
-one request — `"Salz"` for the soup and `" salz "` to taste — is looked up once;
-the ids are kept in a `Map` keyed by the normalized name, so both lines point at
-the same ingredient. `position` is taken from the index in the incoming list,
-starting at 1.
-
-`language` is required in the body and decides where a **new** ingredient's
-name goes: `"DE"` writes `nameDe`, `"EN"` writes `nameEn`, the other column stays
-`NULL`, and `nameNormalized` holds the name in that language. An existing
-ingredient is linked unchanged. `POST /ingredients` takes the same `language`
-field for the same reason. `PATCH /recipes/:id` may omit it; new ingredients in
-a replaced list then take the recipe's stored language, and a `language` in the
-same request wins over the stored one. The detail response carries the recipe's
-`language`.
-
-Three things are called "ingredient" here, and the code gives each its own word,
-in both backends: an `ingredientLine` is what the request sent, an `ingredient`
-is the row in the table, and a `recipeIngredient` is the link between a recipe
-and one of them.
-
-The request DTO has no `sourceUrl`, `sourceName` or `externalId`. Provenance
-belongs to the importer, which writes through its own input type, and
-`forbidNonWhitelisted` answers 400 if a client sends those fields anyway.
-
-`buildRecipeCreateData` builds the insert's `data` and runs no query, so each
-caller chooses its own `include` or `select`. Prisma derives the result type
-from that argument: `create()` includes the ingredient lines for the mapper, the
-importer selects only the `id`.
-
-All of it runs in **one transaction**. The ingredients are written first, the
-recipe and its join rows last, so the case that matters is a failure in between:
-a dropped connection or a restart must not leave a freshly created ingredient
-behind without a recipe. Every call inside the `$transaction` callback goes
-through `transactionClient`. A single `this.prisma.` call in there would run on
-a different connection, commit on its own and survive the rollback — and every
-successful request would look exactly the same, which is why it has to be
-tested with a failure.
-
-That test was done by hand: with a temporary `throw` between the ingredient loop
-and `recipe.create`, a request containing a new ingredient answers `500` and
-leaves neither the ingredient nor the recipe in the database. Nest answers a
-plain `Error` with a generic `Internal server error` on purpose, since its
-message may contain internals; the message and stack trace appear only in the
-server log.
-
-On success the response is `201` with the same shape as `GET /recipes/:id`. The
-mapper runs after the commit, outside the transaction.
-
-**Aliases decide, in both backends.** `resolveIngredientIds` (Nest) and
-`ResolveIngredientsAsync` (.NET), shared by `POST /recipes` and
-`PATCH /recipes/:id`, look up `ingredient_alias` only; `nameNormalized` is the
-row's key, not a search column. Nest asks once per name with `findUnique`, .NET
-asks once for all names of the request and loads each alias's ingredient with
-`Include`. Two requests that create the same new name at the same moment both
-find no alias; the second then fails on the unique index with a 500. For one
-household that is accepted. There is deliberately no endpoint for managing
-aliases.
-
-### `DELETE /recipes/:id`: one statement, no transaction
-
-Deleting a recipe touches two tables and still needs no transaction. The foreign
-key from `recipe_ingredient` to `recipe` is declared `ON DELETE CASCADE`, so
-Postgres removes the join rows as part of the same `DELETE` statement, and a
-single statement is always all or nothing. `POST /recipes` needs `$transaction`
-because it sends several statements in a row; this endpoint sends one. The
-ingredients themselves stay — the cascade only runs from a recipe to its lines.
-
-The service deletes without looking first, for the same reason `POST
-/ingredients` inserts without looking first: a missing row surfaces as Prisma
-error `P2025` and becomes a `404`. A successful delete answers `204 No Content`,
-since the client already knows which recipe it removed. A second `DELETE` on the
-same id answers `404`.
-
-### `PATCH /recipes/:id`: fields in place, ingredient list replaced
-
-A field missing from the request is left untouched: Prisma treats `undefined` as
-"do not change", so `{ "title": "…" }` renames the recipe and nothing else.
-`null` is different — it clears a nullable column such as `description`, and is
-rejected with a `400` for a `NOT NULL` one (see "Optional is not the same as
-nullable" under [DTOs, mappers and validation](#dtos-mappers-and-validation)).
-
-A present `ingredients` replaces the whole list. Inside one transaction the
-service updates the recipe's own fields, resolves the ingredient names exactly
-as `POST /recipes` does — both call the same private `resolveIngredientIds` —
-deletes every `recipe_ingredient` row of the recipe and writes the new list,
-positions again taken from the index. An ingredient that dropped out of the list
-is unlinked, not deleted; it stays in `ingredient` for other recipes.
-
-`updated_at` is not set by the service. A request carrying only `ingredients`
-leaves every recipe field `undefined`, and Prisma then sends no `UPDATE` for the
-recipe at all — a recipe whose flour went from one to two tablespoons would look
-untouched. Since 12 October 2026 two database triggers own the column, the
-second of which covers exactly this case by touching the parent recipe whenever
-a `recipe_ingredient` row changes. See
-[Second backend: ASP.NET Core](docs/DECISIONS.md#second-backend-aspnet-core).
-
-Replacing gives the join rows new ids on every edit. That is harmless as long as
-nothing points at a single row: the meal plan will point at recipes, the
-shopping list at ingredients, nutrition figures at either. Should that change,
-the rows already carry their own `id`, so a line-by-line comparison would change
-the API and the service, not the schema.
-
-**The order inside the transaction matters.** The recipe update runs first. For
-an unknown id it raises `P2025` before anything has been written, and the
-service answers `404`. Resolving the ingredients first would create ingredients
-for a recipe that does not exist, and inserting the join rows would then fail on
-the foreign key with `P2003` — rolled back all the same, but answered with a
-`500`. Prisma checks the row even when `data` is empty, so a request carrying
-only `ingredients` answers `404` for an unknown id as well. The `catch` sits
-around the whole `$transaction`, never inside the
-callback: an error caught in there would let the callback finish normally, and
-Prisma would commit.
-
-On success the response is `200` with the updated recipe, read with
-`findUniqueOrThrow` at the end of the transaction — a query that already sees
-the transaction's own, not yet committed writes.
-
-### Duplicates: let the constraint decide
-
-`POST /ingredients` does not look for an existing row before it writes. It
-inserts the ingredient and its first alias in one write, and the unique indexes
-decide: (`alias`, `language`) on `ingredient_alias` and (`name_normalized`,
-`language`) on `ingredient`. If the name is taken in that language, Postgres
-refuses the insert, nothing of the write remains, Prisma raises error code `P2002`,
-and the service turns that into `409 Conflict`. The .NET backend follows the same
-rule against the same indexes; only the name of the refusal differs, where Npgsql
-reports SQLSTATE `23505` inside an EF Core `DbUpdateException` — see
-[The writing endpoints](docs/DECISIONS.md#the-writing-endpoints).
-
-A lookup first would not save the catch, only add a query. Two requests for
-"Zwiebel" arriving together would both find nothing and both insert, and the
-second would still hit the index — as an unhandled 500. The index is the only
-check that holds when requests overlap, so it is the only check.
-`POST /recipes` relies on the same index for the ingredients it creates.
-
-Two consequences worth knowing:
-
-- **The first spelling wins.** `" ZWIEBEL "` and `"Zwiebel"` normalize to the
-  same value, so whichever arrives second is refused, and the ingredient keeps
-  the display form of the first. There is no `PATCH /ingredients` in V1;
-  rename it in Prisma Studio.
-- **A name is taken per language.** "Eier" in German is an alias of the
-  catalog entry egg, so `{ "name": "Eier", "language": "DE" }` answers 409. In
-  English there is no alias "eier", so the same name with `"EN"` creates a new
-  ingredient.
-
-## 🐘 Working with the database
-
-The database runs in a container. Its data lives in the named Docker volume
-`pgdata` and survives container restarts.
-
-```bash
-docker compose up -d db                            # start
-docker compose stop db                             # stop, keep data
-docker compose logs db                             # inspect logs
-docker compose exec db psql -U recipe -d recipe    # SQL shell inside the container
-docker compose down -v                             # stop and DELETE all data
-```
-
-`docker compose down -v` is the way to start over from an empty database.
-
-### Connecting from the host
-
-This is the path the API uses, and the one worth verifying after any change to
-`.env` or `docker-compose.yml`:
-
-```bash
-psql "postgresql://recipe:<password>@localhost:5432/recipe"
-```
-
-```sql
-SELECT version();          -- must report 18.x, i.e. the container, not a local server
-\conninfo                  -- shows host, port and user of the current connection
-```
-
-Note that `docker compose exec db psql ...` connects from inside the container
-and therefore does **not** verify the published port, the password in
-`DATABASE_URL`, or anything else the API depends on.
-
-Do not install the `postgresql` package to get a client — it brings a server
-that binds to port 5432 and will collide with the container. Install
-`postgresql-client` instead.
-
-### Timestamps
-
-`created_at` and `updated_at` are `timestamptz(3)` — *timestamp with time
-zone*. Despite the name, no zone is stored: the column holds an exact moment,
-kept internally as UTC, and converts it on output into the time zone of the
-connection, with the offset attached. A change made at 11:43 in Berlin in summer
-reads `2026-09-11 09:43:05+00` in a UTC session and `2026-09-11 11:43:05+02`
-after `SET timezone = 'Europe/Berlin';` — the same moment, spelled two ways.
-Some SQL clients convert to local time on their own.
-
-Until the `timestamptz` migration the columns were plain `timestamp(3)`,
-*without* time zone: a date and a clock reading, `09:43:05`, with nothing to say
-which zone it belongs to. That it meant UTC was a convention Prisma kept; every
-other writer — psql, a trigger, the .NET backend — would have had to know it
-too. The PostgreSQL wiki's "Don't Do This" page advises against plain
-`timestamp` for exactly this reason. The migration converted the existing values
-by reading them in the session's time zone, which is UTC in the container, so
-they stayed correct. `SHOW timezone;` is the check to run before such a
-migration.
-
-Converting to a user's local time is the frontend's job. The API sends
-`"2026-09-11T09:43:05.123Z"`, and Angular's `DatePipe` formats it in the
-browser's time zone; neither the API nor the database needs to know where a user
-is.
-
-**Moments and days are different types.** Something that *happened* — created,
-edited — is a moment and gets `timestamptz`. Something *planned for a day*, such
-as a V2 meal plan entry for Tuesday, 15 September, is a calendar date and gets
-`date`. Stored as a moment it would be midnight UTC, which a user in New York
-sees as Monday, 8 pm — and the soup lands on the wrong day.
-
-### Things that will bite you
-
-**Credentials are only applied to an empty volume.** `POSTGRES_USER`,
-`POSTGRES_PASSWORD` and `POSTGRES_DB` are evaluated by the image only during
-first-time initialisation. Changing them in `.env` afterwards has no effect and
-results in `password authentication failed`. Remove the volume with
-`docker compose down -v` to re-initialise.
-
-**Port conflicts.** If 5432 is already in use, set `POSTGRES_PORT` in `.env` to
-a free port and update the port inside `DATABASE_URL` to match.
-
-**The volume is mounted at `/var/lib/postgresql`, not at `.../data`.** From
-version 18 on, the PostgreSQL image stores data in a major-version
-subdirectory (`/var/lib/postgresql/18`). Mounting the parent directory keeps
-the old and the new data directory inside a single mount, which
-`pg_upgrade --link` requires for a future major version upgrade. Most guides
-online still show `/var/lib/postgresql/data`; those are written for version 17
-and earlier.
-
-To confirm the data actually lands in the volume:
-
-```bash
-docker compose exec db ls -la /var/lib/postgresql   # should contain a "18" directory
-```
-
-### Backups
-
-Run `pg_dump` inside the container rather than on the host:
-
-```bash
-docker compose exec db pg_dump -U recipe -d recipe > backup.sql
-```
-
-`pg_dump` refuses to dump from a server newer than itself, so running it in the
-container guarantees matching versions regardless of what is installed on the
-host — and it works the same way on any machine the project is deployed to.
-
-Restore into an empty database with:
-
-```bash
-docker compose exec -T db psql -U recipe -d recipe < backup.sql
-```
+`POST /recipes` takes a recipe and its whole ingredient list in one request.
+Ingredients are named, not referenced by id: for each line the service
+normalizes the name, looks it up as an alias in the recipe's language, and
+either links the existing ingredient or creates a new one. Ingredients, recipe
+and join rows are written in **one transaction**, so a failure halfway leaves
+nothing behind — no new ingredient without its recipe. Both backends do the
+same, against the same unique indexes. The full walkthrough is in
+[docs/API.md](docs/API.md#post-recipes-one-request-one-transaction).
 
 <a id="roadmap"></a>
 
@@ -999,7 +320,7 @@ photo per recipe, see [Recipe images](docs/DECISIONS.md#recipe-images).
 application gets a frontend: the NestJS API is finished first, then rebuilt in
 ASP.NET Core, then the Angular frontend follows, and finally Docker Compose.
 The CI pipeline that builds both backends and runs the same requests against
-each already exists, see [CI](#ci).
+each already exists, see [CI](docs/BACKEND.md#ci).
 See [Second backend: ASP.NET Core](docs/DECISIONS.md#second-backend-aspnet-core).
 
 ## 📄 License
@@ -1018,7 +339,11 @@ link will be part of the frontend from the moment one exists.
 
 | File | Contents |
 |---|---|
+| [docs/BACKEND.md](docs/BACKEND.md) | NestJS workspace and code conventions, CI, DTOs, mappers and validation |
+| [docs/DATABASE.md](docs/DATABASE.md) | Naming convention, Prisma and migrations, seeding, Prisma Studio, the database container, timestamps, pitfalls, backups |
+| [docs/API.md](docs/API.md) | How the endpoints work: the two searches, `POST`, `PATCH` and `DELETE /recipes`, duplicate handling |
+| [docs/IMPORT.md](docs/IMPORT.md) | Bulk import of the allrecipes data: steps, counters, how a line is read, what gets skipped |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Every design decision, including the alternatives that were rejected and why — data model, the second backend, nutrition, images, multi-user, and the accepted audit findings |
-| [tools/README.md](tools/README.md) | Where imported recipe data comes from, its licence, how to reproduce the converted file, the ingredient catalog tools and the CI compare script |
+| [docs/TOOLS.md](docs/TOOLS.md) | Where imported recipe data comes from, its licence, how to reproduce the converted file, the ingredient catalog tools and the CI compare script |
 | [requests.http](requests.http) | Example requests, runnable against either backend |
 | [http-client.env.json](http-client.env.json) | The two httpYac environments `requests.http` runs in |
