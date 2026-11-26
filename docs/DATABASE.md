@@ -139,7 +139,7 @@ lose track of which lines are yours.
 cd apps/api && npx prisma studio
 ```
 
-Opens a browser UI on http://localhost:51212. This is the tool to reach for when
+Opens a browser UI on `http://localhost:51212`. This is the tool to reach for when
 working with *data*; use `psql` or a SQL client for questions about *structure*.
 
 Two things it does that a generic SQL client cannot:

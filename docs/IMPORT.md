@@ -10,7 +10,7 @@ repository.
 **Step by step**, from the repository root, with the database running and
 migrated (steps 3 and 5 of [Getting started](../README.md#-getting-started)):
 
-1. Download `dataset.csv` from [Zenodo record 15169428](https://zenodo.org/records/15169428)
+1. Download `dataset.csv` from Zenodo record 15169428 (`zenodo.org/records/15169428`)
    into `data/`.
 2. Create the Python environment for the tools, once:
 

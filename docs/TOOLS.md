@@ -16,7 +16,7 @@ handling.
 
 ### Source
 
-[Culinary Recipes Dataset](https://zenodo.org/records/15169428), Zenodo record
+Culinary Recipes Dataset (`zenodo.org/records/15169428`), Zenodo record
 15169428, version v1, published 7 April 2025. A single `dataset.csv` of about
 110 MB holding 50,510 recipes. Every record carries its original URL, and all of
 them point to `www.allrecipes.com`; the recipes themselves were published
@@ -67,7 +67,7 @@ Two properties of the source would otherwise reach the importer:
   breaks on the first apostrophe inside a string.
 
 One field is added: **`Ingredient_Names`**, the names
-[`ingredient-parser-nlp`](https://github.com/strangetom/ingredient-parser) reads
+`ingredient-parser-nlp` reads
 from each line of `Ingredients_Raw`, one list per line at the same index:
 
 ```json
@@ -123,7 +123,7 @@ catalog in `apps/api/prisma/ingredient-catalog.json` and keep it maintainable.
 Why the catalog exists and how it was built is in
 [DECISIONS.md](DECISIONS.md#data-model-decisions).
 
-Both read the lines with [`ingredient-parser-nlp`](https://github.com/strangetom/ingredient-parser)
+Both read the lines with `ingredient-parser-nlp`
 (MIT), as does `allrecipes-csv-to-json.py`, which needs a virtual environment.
 Once, from the repository root:
 

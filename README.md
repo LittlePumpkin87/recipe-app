@@ -1,6 +1,6 @@
 # 🎃 recipe-app — Self-Hosted Recipe & Shopping List
 
-[![CI](https://img.shields.io/github/actions/workflow/status/LittlePumpkin87/recipe-app/ci.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=CI)](https://github.com/LittlePumpkin87/recipe-app/actions/workflows/ci.yml)
+![CI](https://img.shields.io/github/actions/workflow/status/LittlePumpkin87/recipe-app/ci.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=CI)
 
 ![NestJS](https://img.shields.io/badge/NestJS-E0234E?style=for-the-badge&logo=nestjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
@@ -101,7 +101,7 @@ npm run db:seed
 npm run start:nest
 ```
 
-The API listens on http://localhost:3000.
+The API listens on `http://localhost:3000`.
 
 Step 5 is the one that is easy to miss: steps 1 to 4 leave you with a running
 but completely empty database. See [Prisma and migrations](docs/DATABASE.md#prisma-and-migrations)
@@ -128,7 +128,7 @@ without it.
 npm run start:dotnet
 ```
 
-It listens on http://localhost:5000, so it does not collide with the NestJS API
+It listens on `http://localhost:5000`, so it does not collide with the NestJS API
 on port 3000. `requests.http` sits in the repository root and is written for
 httpYac (VS Code extension `anweber.vscode-httpyac`, npm package `httpyac`). It
 takes `{{host}}` from `http-client.env.json`, which defines two environments,
@@ -154,7 +154,7 @@ instead.
 **Editor support.** The Microsoft C# extension is not available on Open VSX,
 because its licence restricts it to official Visual Studio Code builds. VSCodium
 users need an alternative; this project uses
-[DotRush](https://open-vsx.org/extension/nromanov/dotrush) (`nromanov.dotrush`),
+DotRush (`nromanov.dotrush` on Open VSX),
 which brings its own Roslyn-based language server.
 
 ### A note on the password

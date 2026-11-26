@@ -535,7 +535,7 @@ refused to write a UTC `DateTime` at all. See [Timestamps](DATABASE.md#timestamp
 the same `.env`, but they do not accept the same format. Prisma expects the URI
 form, `postgresql://user:password@host:port/database`. Npgsql expects semicolon-
 separated pairs, `Host=…;Username=…`, and has never supported URIs
-([npgsql#2090](https://github.com/npgsql/npgsql/issues/2090), open since 2018).
+(Npgsql issue 2090, open since 2018).
 
 Rather than keeping the same secret twice in two spellings, the .NET backend
 translates at startup. `AddDatabaseConnection` in
@@ -562,7 +562,7 @@ Three details in that translation are easy to get wrong:
   filled in by hand.
 
 ASP.NET Core does not read `.env` files at all; that convention comes from Node.
-[DotNetEnv](https://www.nuget.org/packages/DotNetEnv) loads the repository-root
+The NuGet package `DotNetEnv` loads the repository-root
 `.env` into environment variables before `WebApplication.CreateBuilder` builds
 the configuration — `TraversePath()` walks up from the project directory to find
 it, and `NoClobber()` leaves real environment variables untouched, which is what
@@ -1094,9 +1094,8 @@ it:
 
 ## Shipped starter recipes
 
-The application ships with an empty database, the way [Mealie](https://github.com/mealie-recipes/mealie)
-and [Tandoor Recipes](https://github.com/TandoorRecipes/recipes) do. Their value
-is the importer, not the content — people self-host a recipe app to keep *their
+The application ships with an empty database. The value of a self-hosted recipe
+app is the importer, not the content — people self-host a recipe app to keep *their
 own* recipes somewhere they control.
 
 The seed in `apps/api/prisma/seed.ts` is development fixtures only: a handful of
@@ -1116,7 +1115,7 @@ covered by copyright in Germany, but the wording of the instructions and the
 photographs are, and a collection such as Chefkoch is protected in its own right
 under database rights (§ 87a UrhG) regardless of the individual entries.
 Scraping one into a public AGPL repository is not an option. What is: own
-recipes, the German [Wikibooks Kochbuch](https://de.wikibooks.org/wiki/Kochbuch)
+recipes, the German Wikibooks Kochbuch
 (CC BY-SA 3.0, attribution required), or public-domain cookbooks. A CC BY-SA
 data set needs its own licence notice for the data directory, separate from the
 AGPL covering the code.
@@ -1289,7 +1288,7 @@ with Jest.
 
 `prisma` 7.10.1 pulls `@prisma/config`, which pins `effect` to exactly 3.20.0.
 That version carries a ReDoS in `Schema.TemplateLiteral`
-([GHSA-7589-6fvf-x4pw](https://github.com/advisories/GHSA-7589-6fvf-x4pw),
+(`GHSA-7589-6fvf-x4pw`,
 high), fixed in 3.22.1. Because the version is pinned, no ordinary update can
 reach the fix, so the root `package.json` forces it (since 25 November 2026):
 
