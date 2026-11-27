@@ -6,10 +6,11 @@ Two things make the source awkward for a TypeScript importer: the file is
 Windows-1252 rather than UTF-8, and its nested columns hold Python literals in
 single quotes, which `JSON.parse` cannot read. This script fixes both.
 
-It also adds `Ingredient_Names`: the names ingredient-parser-nlp reads from each
-line of `Ingredients_Raw`, at the same index, because the parser exists only in
-Python. Everything else keeps the shape the source gave it; interpreting it is
-the importer's job. See docs/TOOLS.md.
+It also adds what ingredient-parser-nlp reads from each line of
+`Ingredients_Raw`, at the same index, because the parser exists only in Python:
+`Ingredient_Names`, and `Ingredient_Details` with the unit word and a note built
+from size, preparation and comment. Everything else keeps the shape the source
+gave it; interpreting it is the importer's job. See docs/TOOLS.md.
 """
 
 import ast
@@ -52,22 +53,32 @@ def parse_literal(value):
         return {"_unparsed": value}
 
 
-def parse_names(raw_lines, cache):
+def parse_lines(raw_lines, cache):
     if not isinstance(raw_lines, list):
-        return None
-    names = []
+        return None, None
     for line in raw_lines:
         if line not in cache:
-            cache[line] = read_names(line)
-        names.append(cache[line])
-    return names
+            cache[line] = read_line(line)
+    names = [cache[line][0] for line in raw_lines]
+    details = [cache[line][1] for line in raw_lines]
+    return names, details
 
 
-def read_names(line):
+def read_line(line):
     if not line.strip():
-        return []
+        return [], {"unit": None, "note": None}
     parsed = parse_ingredient(line, string_units=True)
-    return [part.text for part in parsed.name]
+    names = [part.text for part in parsed.name]
+    unit = getattr(parsed.amount[0], "unit", "") if parsed.amount else ""
+    unit = unit.strip().lower()
+    parts = [amount.text for amount in parsed.amount[1:]]
+    if parsed.size:
+        parts.append(parsed.size.text.strip("() "))
+    for part in (parsed.preparation, parsed.comment, parsed.purpose):
+        if part:
+            parts.append(part.text)
+    note = ", ".join(part for part in parts if part)
+    return names, {"unit": unit or None, "note": note or None}
 
 def count_records(source_path):
     with open(source_path, newline="", encoding="cp1252", errors="replace") as source:
@@ -96,7 +107,9 @@ def convert(source_path, target_path):
                     failures[column] += 1
                 record[column] = parsed
 
-            record["Ingredient_Names"] = parse_names(record["Ingredients_Raw"], cache)
+            names, details = parse_lines(record["Ingredients_Raw"], cache)
+            record["Ingredient_Names"] = names
+            record["Ingredient_Details"] = details
 
             line = json.dumps(record, ensure_ascii=False)
             if REPLACEMENT in line:

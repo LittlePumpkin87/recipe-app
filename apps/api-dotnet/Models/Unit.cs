@@ -28,5 +28,8 @@ public enum Unit
     [PgName("POUND")][JsonStringEnumMemberName("POUND")] Pound,
     [PgName("PINT")][JsonStringEnumMemberName("PINT")] Pint,
     [PgName("QUART")][JsonStringEnumMemberName("QUART")] Quart,
-
+    [PgName("GALLON")][JsonStringEnumMemberName("GALLON")] Gallon,
+    [PgName("KNIFE_TIP")][JsonStringEnumMemberName("KNIFE_TIP")] KnifeTip,
+    [PgName("CENTILITER")][JsonStringEnumMemberName("CENTILITER")] Centiliter,
+    [PgName("DECILITER")][JsonStringEnumMemberName("DECILITER")] Deciliter,
 }

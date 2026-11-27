@@ -25,17 +25,17 @@ families, every factor exact and whole:
 | Family | Units | Factors |
 |---|---|---|
 | metric weight | `GRAM`, `KILOGRAM` | 1 kg = 1000 g |
-| metric volume | `MILLILITER`, `LITER` | 1 l = 1000 ml |
+| metric volume | `MILLILITER`, `CENTILITER`, `DECILITER`, `LITER` | 1 cl = 10 ml, 1 dl = 100 ml, 1 l = 1000 ml |
 | imperial weight | `OUNCE`, `POUND` | 1 lb = 16 oz |
-| US volume | `TEASPOON`, `TABLESPOON`, `FLUID_OUNCE`, `CUP`, `PINT`, `QUART` | 1 tbsp = 3 tsp, 1 fl oz = 6 tsp, 1 cup = 48 tsp, 1 pint = 96 tsp, 1 quart = 192 tsp |
+| US volume | `TEASPOON`, `TABLESPOON`, `FLUID_OUNCE`, `CUP`, `PINT`, `QUART`, `GALLON` | 1 tbsp = 3 tsp, 1 fl oz = 6 tsp, 1 cup = 48 tsp, 1 pint = 96 tsp, 1 quart = 192 tsp, 1 gallon = 768 tsp |
 
 Nothing crosses between families. Grams to ounces would be exact but mixes
 systems for no gain. Cups to grams is not a conversion at all: a cup of flour
 and a cup of oil weigh differently, so it needs a density per ingredient — which
 is exactly what [Nutrition](#nutrition) stage 2 collects and is expressly barred
 from reaching the shopping list. `PIECE`, `CLOVE`, `SLICE`, `PACK`, `CAN`,
-`BOTTLE`, `PINCH` and `BUNCH` belong to no family; they add up with themselves
-and with nothing else.
+`BOTTLE`, `PINCH`, `KNIFE_TIP` and `BUNCH` belong to no family; they add up with
+themselves and with nothing else.
 
 **`OUNCE` is weight, `FLUID_OUNCE` is volume.** Added on 23 October 2026 with
 `BOTTLE`, both for the allrecipes import. The source writes "5 fluid ounces
@@ -45,6 +45,23 @@ cheese. A fluid ounce is exactly 2 tablespoons, so it joins the US volume family
 with a whole factor. `BOTTLE` is a container like `CAN` and `PACK`: its size
 varies, so it stays outside every family, and the size from the source ("750
 milliliter") goes into the line's `note`.
+
+**`GALLON`, `KNIFE_TIP`, `CENTILITER`, `DECILITER`** (added 26 November 2026).
+Gallon appears 236 times in the allrecipes data and joins the US volume family
+exactly (4 quarts). The other three come from recipes typed by hand rather than
+from the import: a knife tip (Messerspitze) is common in German baking and is
+not a pinch, so storing it as `PINCH` would change what the recipe says;
+centilitres and decilitres fit the metric family exactly. A German cup
+(about 150 ml) against a US cup (240 ml) needs no value of its own: a recipe
+measured in cups is consistent in itself, and the shopping list only drifts
+when two recipes are added, for products bought by the pack anyway.
+
+**Count words the enum does not know go into the note** (decided 26 November
+2026). Drops, leaves, ears, sheets, scoops, fillets: the line keeps its amount,
+`unit` stays empty and the word opens the note (`6 · mint · leaves`). The
+shopping list then lists the ingredient without adding it, which is what a
+shopper needs for vanilla or mint. Mapping them to `PIECE` would add 2 drops of
+vanilla to 1 vanilla pod.
 
 The sum is computed in the family's smallest unit, which keeps the arithmetic
 whole, and the unit it is displayed in follows the magnitude: 1500 g reads as
@@ -142,6 +159,19 @@ the names into each record as `Ingredient_Names`, one list per line of
 shipped, so everyone who wants the import builds it themselves; one script
 fewer and one file fewer is the point. The coverage tool reads the same field,
 so its estimate and the import see the same names.
+
+**Notes come from the parser, not from the raw line** (decided 26 November
+2026, found while closing #46). When the source's unit field held an ingredient
+word (`egg`, `pie`), the adapter stored the whole raw line as the note and no
+unit: `4 · egg yolk · "4 egg yolks, beaten"`, in 10,683 lines of 7,994 recipes.
+That rule dates from when names came from the source's broken split and the raw
+line was the only place the lost words survived. With parser names the note only
+repeated the line. The converter now also writes `Ingredient_Details`: the
+parser's unit word and a note built from size, preparation and comment. The
+line becomes `4 · PIECE · egg yolk · beaten`. Keeping the raw line in a column
+of its own, as many recipe apps do, was rejected: it cannot be scaled with the
+servings, and neither can anything that later builds on the amounts, such as
+nutrition.
 
 **A line with several names** (decided 25 November 2026). The parser splits
 1,822 lines into more than one name, in 8,560 recipes. Most contain "or"

@@ -76,8 +76,9 @@ still create an ingredient they do not know. See
 **How a line is read.** The ingredient name comes from `Ingredient_Names`, which
 the converter fills with `ingredient-parser-nlp` (see
 [docs/TOOLS.md](TOOLS.md)). Amount, unit and note come from the
-source's own split into name, quantity, unit and remainder, with the original
-line (`Ingredients_Raw`) as a fallback:
+source's own split into name, quantity, unit and remainder. Where that split
+has an ingredient word in its unit field, unit and note come from
+`Ingredient_Details` instead, the parser's reading of the line:
 
 | Source line | Stored as |
 |---|---|
@@ -88,6 +89,8 @@ line (`Ingredients_Raw`) as a fallback:
 | `1 teaspoon crushed red pepper` | `red pepper flakes`, 1, `TEASPOON` |
 | `0.33 cup butter or margarine, melted` | `butter`, 0.33, `CUP`, note `or margarine, melted` |
 | `salt and ground black pepper to taste` | two lines: `salt` and `black pepper`, each with note `to taste` |
+| `4 egg yolks, beaten` | `egg yolk`, 4, `PIECE`, note `beaten` |
+| `6 ears sweet corn, husked and cleaned` | `sweet corn`, 6, no unit, note `ears, husked and cleaned` |
 
 The second row: the source leaves the unit empty and drops the decimal point
 from the size, so the container word and the size are taken from the original
@@ -97,7 +100,9 @@ original line: the parser drops "can" and "crushed", and those words decide the
 product. Rows six and seven: when the parser finds several names in one line,
 a line with "or" keeps the first as the ingredient and the rest in the note, so
 the shopping list counts one; any other line becomes one row per name, with the
-amount on the first only.
+amount on the first only. The last two rows: no unit word means pieces; a word
+the `Unit` enum does not know (ears, leaves, drops) opens the note and leaves the
+unit empty, so the shopping list lists the line without adding it.
 
 **What gets skipped.** A recipe without a recipe id in its URL, without
 instructions or ingredients, without parsed names, with a title over 100

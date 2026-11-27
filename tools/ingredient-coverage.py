@@ -3,22 +3,19 @@
 completely, and lists the most frequent names it does not know.
 
 A recipe counts as covered when every line resolves to a catalog entry. The
+names come from `Ingredient_Names`, written by allrecipes-csv-to-json.py. The
 two raw-line rules from docs/DECISIONS.md are applied (cans, "red pepper"); the
 importer is the authoritative implementation, this is an estimate.
 """
 
 import json
-import os
 import re
 import sys
 import unicodedata
 from collections import Counter
 
-from ingredient_parser import parse_ingredient
-
 SOURCE = "data/allrecipes.ndjson"
 CATALOG = "apps/api/prisma/ingredient-catalog.json"
-CACHE = "data/parsed-lines.json"
 TOP_UNKNOWN = 30
 
 CAN = re.compile(r"\b(cans?|jars?)\b", re.I)
@@ -41,20 +38,6 @@ def load_aliases(path):
     return aliases
 
 
-def parse_lines(recipes, cache):
-    if os.path.exists(cache):
-        with open(cache, encoding="utf-8") as file:
-            return json.load(file)
-    names = {}
-    for lines in recipes:
-        for line in lines:
-            if line not in names:
-                names[line] = [normalize(p.text) for p in parse_ingredient(line, string_units=True).name]
-    with open(cache, "w", encoding="utf-8") as file:
-        json.dump(names, file)
-    return names
-
-
 def resolve(raw_line, name, aliases):
     if name == "red pepper":
         name = "red pepper flakes" if FLAKES.search(raw_line) else "red bell pepper"
@@ -66,16 +49,20 @@ def resolve(raw_line, name, aliases):
 def main():
     source = sys.argv[1] if len(sys.argv) > 1 else SOURCE
     catalog = sys.argv[2] if len(sys.argv) > 2 else CATALOG
-    cache = sys.argv[3] if len(sys.argv) > 3 else CACHE
 
     recipes = []
     with open(source, encoding="utf-8") as records:
         for record in records:
-            raw = json.loads(record).get("Ingredients_Raw")
-            if isinstance(raw, list):
-                recipes.append([line for line in raw if line.strip()])
+            recipe = json.loads(record)
+            raw = recipe.get("Ingredients_Raw")
+            names = recipe.get("Ingredient_Names")
+            if isinstance(raw, list) and isinstance(names, list):
+                recipes.append([
+                    (line, [normalize(name) for name in line_names])
+                    for line, line_names in zip(raw, names)
+                    if line.strip()
+                ])
 
-    names = parse_lines(recipes, cache)
     aliases = load_aliases(catalog)
 
     covered = 0
@@ -84,8 +71,8 @@ def main():
     for lines in recipes:
         missing = []
         found = []
-        for line in lines:
-            for name in names[line] or ["(no name)"]:
+        for line, line_names in lines:
+            for name in line_names or ["(no name)"]:
                 entry = resolve(line, name, aliases)
                 (found if entry else missing).append(entry or name)
         if missing:
@@ -96,7 +83,7 @@ def main():
 
     print(f"recipes: {len(recipes)}, fully mapped: {covered} ({covered / len(recipes):.1%})")
     print(f"catalog entries used by mapped recipes: {len(used)}")
-    print(f"most frequent unknown names (recipes containing them):")
+    print("most frequent unknown names (recipes containing them):")
     for name, count in unknown.most_common(TOP_UNKNOWN):
         print(f"  {count:6}  {name}")
 

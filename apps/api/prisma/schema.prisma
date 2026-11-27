@@ -37,7 +37,10 @@ enum Unit {
   QUART
   BOTTLE
   FLUID_OUNCE
-
+  CENTILITER
+  DECILITER
+  GALLON
+  KNIFE_TIP
   @@map("unit")
 }
 

@@ -4,6 +4,10 @@ Utilities that belong to neither backend and are not part of the running
 application: one prepares external data for import, two maintain the
 ingredient catalog, one compares the two backends in CI.
 
+The three Python scripts were written by Claude (Anthropic) to my
+specifications: which fields to read, what to count, and what to do with lines
+that do not fit.
+
 The data itself is **not** in this repository — `data/` is ignored. What is kept
 in this file is the procedure, so that a local database can be rebuilt from the same
 source and so that it stays recorded where the recipes came from.
@@ -66,20 +70,22 @@ Two properties of the source would otherwise reach the importer:
   in single quotes. `JSON.parse` rejects them, and swapping quote characters
   breaks on the first apostrophe inside a string.
 
-One field is added: **`Ingredient_Names`**, the names
-`ingredient-parser-nlp` reads
-from each line of `Ingredients_Raw`, one list per line at the same index:
+Two fields are added, both read by `ingredient-parser-nlp` from each line of
+`Ingredients_Raw`, one entry per line at the same index:
+**`Ingredient_Names`**, the names, and **`Ingredient_Details`**, the unit word
+and a note built from size, preparation and comment:
 
 ```json
-"Ingredients_Raw":  ["1 jalapeno pepper, seeded", "salt and pepper to taste"],
-"Ingredient_Names": [["jalapeno pepper"], ["salt", "pepper"]]
+"Ingredients_Raw":    ["1 jalapeno pepper, seeded", "3 scoops vanilla ice cream"],
+"Ingredient_Names":   [["jalapeno pepper"], ["vanilla ice cream"]],
+"Ingredient_Details": [{"unit": null, "note": "seeded"}, {"unit": "scoops", "note": null}]
 ```
 
 The source's own pre-split `Ingredients` field loses words (`1 jalapeno pepper`
 arrives as name `pepper`), and the parser exists only in Python, so the names
 are read here and the importer picks them up. They are stored as the parser
 returns them; normalising is left to `normalizeIngredientName` in the API.
-`Ingredient_Names` is `null` when `Ingredients_Raw` could not be read.
+Both fields are `null` when `Ingredients_Raw` could not be read.
 
 Apart from that, the script changes the **format only, never the meaning**. Units stay as the
 source wrote them, quantities stay fractions, servings stay a list, instructions
@@ -87,7 +93,7 @@ stay an array of steps. Mapping those onto `Unit`, `Decimal(8,2)`, `servings`
 and Markdown is the importer's work, in the language the application is written
 in, where it can be tested and where the V3 URL import reuses it.
 
-### Result of the run on 12 October 2026
+### Result of the run on 26 November 2026
 
 ```
 50513 records written
@@ -123,9 +129,10 @@ catalog in `apps/api/prisma/ingredient-catalog.json` and keep it maintainable.
 Why the catalog exists and how it was built is in
 [DECISIONS.md](DECISIONS.md#data-model-decisions).
 
-Both read the lines with `ingredient-parser-nlp`
-(MIT), as does `allrecipes-csv-to-json.py`, which needs a virtual environment.
-Once, from the repository root:
+`ingredient-inventory.py` and `allrecipes-csv-to-json.py` read the lines with
+`ingredient-parser-nlp` (MIT), which needs a virtual environment.
+`ingredient-coverage.py` takes the parsed names from the NDJSON and runs on the
+standard library alone. Once, from the repository root:
 
 ```bash
 python3 -m venv tools/.venv
@@ -147,13 +154,14 @@ example line. Parsing the 105,687 distinct lines takes several minutes.
 ### `ingredient-coverage.py`
 
 ```bash
-tools/.venv/bin/python tools/ingredient-coverage.py
+python3 tools/ingredient-coverage.py
 ```
 
 Prints how many recipes the catalog maps completely and the names that most
 often block a recipe. That list is the work queue for extending the catalog.
-The first run caches the parsed names in `data/parsed-lines.json`; delete the
-file after a dataset update. Result on 10 November 2026:
+It reads the names from `Ingredient_Names` in `data/allrecipes.ndjson`, the
+same field the importer uses, so after a dataset update run
+`allrecipes-csv-to-json.py` first. Result on 10 November 2026:
 
 ```
 recipes: 50476, fully mapped: 27474 (54.4%)

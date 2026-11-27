@@ -16,6 +16,11 @@ export interface AllrecipesIngredient {
     misc: string;
 }
 
+export interface AllrecipesIngredientDetails {
+    unit: string | null;
+    note: string | null;
+}
+
 export interface AllrecipesRecord {
     Name: string;
     'Preparation Time': string | null;
@@ -23,6 +28,7 @@ export interface AllrecipesRecord {
     Servings: number | string[] | Unparsed | null;
     Ingredients: AllrecipesIngredient[] | null;
     Ingredient_Names: string[][] | null;
+    Ingredient_Details: AllrecipesIngredientDetails[] | null;
     Ingredients_Raw: string[] | Unparsed | null;
     Instructions: string[] | Unparsed | null;
     URL: string | null;
@@ -49,6 +55,7 @@ export function toImportRecipeInput(
         !Array.isArray(record.Ingredients) ||
         record.Ingredients.length === 0 ||
         !Array.isArray(record.Ingredient_Names) ||
+        !Array.isArray(record.Ingredient_Details) ||
         record.Ingredients.some((ingredient, index) => {
             const name = ingredient.ingredient.trim();
             const rawLine = (rawLines[index] ?? '').trim();
@@ -66,6 +73,7 @@ export function toImportRecipeInput(
         record.Ingredients,
         rawLines,
         record.Ingredient_Names,
+        record.Ingredient_Details,
         aliasIds,
     );
     if (ingredients === null) {
@@ -141,6 +149,12 @@ const UNITS = new Map<string, Unit>([
     ['liter', Unit.LITER],
     ['liters', Unit.LITER],
     ['l', Unit.LITER],
+    ['centiliter', Unit.CENTILITER],
+    ['centiliters', Unit.CENTILITER],
+    ['cl', Unit.CENTILITER],
+    ['deciliter', Unit.DECILITER],
+    ['deciliters', Unit.DECILITER],
+    ['dl', Unit.DECILITER],
     ['clove', Unit.CLOVE],
     ['cloves', Unit.CLOVE],
     ['pinch', Unit.PINCH],
@@ -172,6 +186,8 @@ const UNITS = new Map<string, Unit>([
     ['whole', Unit.PIECE],
     ['bottle', Unit.BOTTLE],
     ['bottles', Unit.BOTTLE],
+    ['gallon', Unit.GALLON],
+    ['gallons', Unit.GALLON],
 ]);
 
 const SIZE_WORDS = new Set([
@@ -201,13 +217,15 @@ export function toImportIngredientLines(
     ingredients: AllrecipesIngredient[],
     rawLines: string[],
     ingredientNames: string[][],
+    ingredientDetails: AllrecipesIngredientDetails[],
     aliasIds: Map<string, string>,
 ): CreateRecipeIngredientDto[] | null {
     const lines: CreateRecipeIngredientDto[] = [];
     for (const [index, ingredient] of ingredients.entries()) {
         const rawLine = rawLines[index] ?? '';
+        const details = ingredientDetails[index] ?? { unit: null, note: null };
         const rows = toIngredientRows(
-            toIngredientLine(ingredient, rawLine),
+            toIngredientLine(ingredient, rawLine, details),
             ingredientNames[index] ?? [],
             rawLine,
             aliasIds,
@@ -306,6 +324,7 @@ function toLineWithoutUnit(
 function toIngredientLine(
     ingredient: AllrecipesIngredient,
     rawLine: string,
+    details: AllrecipesIngredientDetails,
 ): CreateRecipeIngredientDto {
     const word = ingredient.unit.trim().toLowerCase();
     const name = ingredient.ingredient.trim();
@@ -342,7 +361,24 @@ function toIngredientLine(
         return toLineWithoutUnit(name, amount, misc, rawLine);
     }
 
-    return { name, amount, note: toNote(rawLine || misc) };
+    return toLineFromDetails(name, amount, details);
+}
+
+//build unit and note from the parser's reading of the raw line
+
+function toLineFromDetails(
+    name: string,
+    amount: number | undefined,
+    details: AllrecipesIngredientDetails,
+): CreateRecipeIngredientDto {
+    const unit = details.unit === null ? Unit.PIECE : UNITS.get(details.unit);
+    const word = unit === undefined ? details.unit : null;
+    return {
+        name,
+        amount,
+        unit: amount === undefined ? undefined : unit,
+        note: toNote([word, details.note].filter(Boolean).join(', ')),
+    };
 }
 
 function toAmount(quantity: string): number | undefined {
